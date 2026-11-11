@@ -1627,3 +1627,60 @@ on this machine yet). The interface still has the 9x look; that's L2.
 - `config.ini` gets a second `[ui]` header when a key is added to a section
   after another section was written (the file reads back correctly). In
   `core/config.c`; harmless, to tidy later.
+
+## Linux port, L2a: a choice of looks (build 38, 2026-11-11)
+
+From the build 37 test: the 9x look stays, and becomes one of three
+(View, Look; `config.ini` `[ui] look = classic|system|breeze|adwaita`):
+
+- **Classic**, the default: the Windows 9x look, unchanged. A screenshot of
+  the main window is pixel-identical to build 37's.
+- **System**: Breeze on KDE Plasma (`XDG_CURRENT_DESKTOP` contains KDE),
+  Adwaita elsewhere on Linux.
+- **Breeze (KDE)** and **Adwaita (GNOME)**, to pick one directly.
+
+Windows has only Classic, so the Look menu isn't there.
+
+**How.** The toolkit's fixed 9x colours became a palette (`desktop/theme.c`)
+that the `UI_*` names now read from, so every window, list and panel
+follows the look without changes of its own. The bevel styles, title bars,
+menus and each control have a flat path: one-pixel frames (corner pixels
+left out, which reads as slightly rounded), solid title bars, tinted hover,
+the accent colour for focus, ticks, sliders and progress, round radio
+buttons and slider handles, row selection across the whole row, and tree
+arrows instead of dotted lines and boxes. Disabled text is plain grey
+instead of embossed. The crosshair and captions over the globe stay black
+and white in every look.
+
+**Breeze's colours** come from the KDE colour scheme in use, read from
+`~/.config/kdeglobals` over Plasma 6's defaults layer
+(`~/.config/kdedefaults/kdeglobals`), first file wins, as KConfig does:
+window, view, button, selection, tooltip and title bar colours, and the
+focus and hover decoration colours (the accent). Keys a scheme leaves out
+come from Breeze or Breeze Dark, whichever is nearer. The scheme is
+re-read within a second of either file changing, so switching colour
+schemes in System Settings changes the app while it runs.
+
+**Adwaita's colours** are libadwaita's, light or dark as the system says
+(SDL reads the desktop portal's colour-scheme setting), re-checked every
+second. GNOME's accent colour setting isn't read yet: the accent is
+Adwaita's blue.
+
+**Checked here** (KDE Plasma 6.3.6, Wayland, Sweet-Ambar-Blue): Classic
+main window identical to build 37; Breeze picks up Sweet-Ambar-Blue's
+colours and name; a test kdeglobals with Breeze Light colours gives a
+light Breeze; Adwaita dark; the Control Gallery's controls and ranges
+tabs, the main window, the menus, in each flat look; core checks pass.
+
+**Not checked:** Adwaita light (this desktop's system setting is dark),
+GNOME itself, and changing the KDE scheme while the app runs.
+
+**Known issues**
+
+- The colour icons (toolbar, folders, title bar icons) are the 9x art.
+  Some have dark outlines that are hard to see on dark schemes (the
+  magnifier, the town, the gear). New icons would be a separate piece.
+- Flat looks still use the 9x sizes and font (Liberation Sans 11 px,
+  16 px rows), and the interface is still drawn small and scaled up, so at
+  150% it is slightly soft. That's L2b: drawing at the screen's resolution
+  and Breeze-like spacing.

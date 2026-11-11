@@ -72,8 +72,32 @@ static int baseline(int y, int h)
 
 static void text_disabled(int x, int y, const char *s)
 {
+    if (UI_FLAT) {
+        ui_text_mnemonic(x, y, UI_GRAYTEXT, s);
+        return;
+    }
     ui_text_mnemonic(x + 1, y + 1, UI_HILIGHT, s);
     ui_text_mnemonic(x, y, UI_SHADOW, s);
+}
+
+/* A filled circle of radius r (in logical pixels) centred on the pixel
+ * cx, cy, in rows of rectangles. */
+static void disc(int cx, int cy, int r, unsigned col)
+{
+    int dy;
+    for (dy = -r; dy <= r; dy++) {
+        int dx = 0;
+        while ((dx + 1) * (dx + 1) + dy * dy <= r * r + r)
+            dx++;
+        draw_rect(cx - dx, cy + dy, 2 * dx + 1, 1, col);
+    }
+}
+
+/* A filled box with its corner pixels left out, framed. */
+static void flat_box(int x, int y, int w, int h, unsigned fill, unsigned frame)
+{
+    draw_rect(x + 1, y + 1, w - 2, h - 2, fill);
+    ui_frame(x, y, w, h, frame, 1);
 }
 
 static int plain_width(const char *s)
@@ -129,6 +153,26 @@ int ui_button_ex(unsigned id, const char *label, int x, int y, int w, int h, int
     }
     pushed = UI.active == id && over && UI.down[0];
 
+    if (UI_FLAT) {
+        /* Flat: a filled box, the accent frame for the default or focused
+         * button, a tint under the mouse and while pressed. */
+        unsigned fill = UI_PAL.button, frame = UI_PAL.border;
+        if (pushed)
+            fill = theme_mix(UI_PAL.button, UI_PAL.accent, 96);
+        else if (over && !disabled)
+            fill = theme_mix(UI_PAL.button, UI_PAL.accent, 36);
+        if (!disabled && (focused || is_default || over))
+            frame = UI_PAL.accent;
+        flat_box(x, y, w, h, fill, frame);
+        tw = plain_width(label);
+        tx = x + (w - tw) / 2;
+        ty = baseline(y, h);
+        if (disabled)
+            text_disabled(tx, ty, label);
+        else
+            ui_text_mnemonic(tx, ty, UI_PAL.button_text, label);
+        return clicked;
+    }
     draw_rect(x, y, w, h, UI_FACE);
     if (pushed) {
         ui_bevel(x, y, w, h, BEVEL_PRESSED);
@@ -167,6 +211,15 @@ int ui_tool_button(unsigned id, icon_id ic, int x, int y, int pushed_state, cons
         if (tip)
             ui_tooltip(id, tip);
     }
+    if (UI_FLAT) {
+        if (down || pushed_state)
+            flat_box(x, y, w, h, theme_mix(UI_PAL.face, UI_PAL.accent, down ? 110 : 70),
+                     UI_PAL.accent);
+        else if (over)
+            flat_box(x, y, w, h, UI_PAL.hover, UI_PAL.hover);
+        ui_icon(ic, x + (w - r->w) / 2, y + (h - r->h) / 2, UI_TEXT);
+        return clicked;
+    }
     if (pushed_state && !down) {
         draw_checker(x + 1, y + 1, w - 2, h - 2, UI_FACE, UI_HILIGHT);
         ui_bevel(x, y, w, h, BEVEL_THIN_DOWN);
@@ -201,6 +254,22 @@ int ui_checkbox(const char *label, int x, int y, int *value)
         if (focused && UI.key == SDLK_SPACE)
             UI.key = 0;
     }
+    if (UI_FLAT) {
+        /* Adwaita fills a ticked box with the accent; Breeze keeps it
+         * light and draws the tick in the accent. */
+        int filled = *value && UI_LOOK == LOOK_ADWAITA;
+        unsigned frame = *value || focused || over ? UI_PAL.accent : UI_PAL.border;
+        unsigned fill = filled ? UI_PAL.accent
+                        : pushed ? theme_mix(UI_PAL.window, UI_PAL.accent, 64)
+                                 : UI_PAL.window;
+        flat_box(x, y, 13, 13, fill, frame);
+        if (*value)
+            ui_icon(ICON_CHECK, x + 3, y + 3, filled ? UI_PAL.accent_text : UI_PAL.accent);
+        ui_text_mnemonic(x + 19, y + 10, UI_TEXT, label);
+        if (focused)
+            draw_rect(x + 19, y + 12, lw, 1, UI_PAL.accent);
+        return changed;
+    }
     draw_rect(x + 2, y + 2, 9, 9, pushed ? UI_FACE : UI_WINDOW);
     ui_bevel(x, y, 13, 13, BEVEL_SUNKEN);
     if (*value)
@@ -227,6 +296,17 @@ int ui_radio(const char *label, int x, int y, int *value, int this_value)
     }
     if (focused && UI.key == SDLK_SPACE)
         UI.key = 0;
+    if (UI_FLAT) {
+        int on = *value == this_value, filled = on && UI_LOOK == LOOK_ADWAITA;
+        disc(x + 6, y + 6, 6, on || focused || over ? UI_PAL.accent : UI_PAL.border);
+        disc(x + 6, y + 6, 5, filled ? UI_PAL.accent : UI_PAL.window);
+        if (on)
+            disc(x + 6, y + 6, 2, filled ? UI_PAL.accent_text : UI_PAL.accent);
+        ui_text_mnemonic(x + 19, y + 10, UI_TEXT, label);
+        if (focused)
+            draw_rect(x + 19, y + 12, lw, 1, UI_PAL.accent);
+        return changed;
+    }
     ui_icon(ICON_RADIO_BOX, x, y, 0);
     if (*value == this_value)
         ui_icon(ICON_RADIO_DOT, x + 4, y + 4, UI_TEXT);
@@ -473,8 +553,12 @@ int ui_edit(unsigned id, char *buf, int size, int x, int y, int w)
     if (e->scroll < 0)
         e->scroll = 0;
 
-    draw_rect(x + 2, y + 2, w - 4, h - 4, UI_WINDOW);
-    ui_bevel(x, y, w, h, BEVEL_SUNKEN);
+    if (UI_FLAT)
+        flat_box(x, y, w, h, UI_WINDOW, focused ? UI_PAL.accent : UI_PAL.border);
+    else {
+        draw_rect(x + 2, y + 2, w - 4, h - 4, UI_WINDOW);
+        ui_bevel(x, y, w, h, BEVEL_SUNKEN);
+    }
     draw_clip_push(x + 2, y + 2, w - 4, h - 4);
     a = e->anchor < e->caret ? e->anchor : e->caret;
     b = e->anchor < e->caret ? e->caret : e->anchor;
@@ -515,7 +599,7 @@ static void combo_overlay(void *ud)
     r.h = rows * 14 + 2;
     if (r.y + r.h > draw_height())
         r.y = combo.r.y - 21 - r.h;
-    draw_rect(r.x, r.y, r.w, r.h, UI_DKSHADOW);
+    draw_rect(r.x, r.y, r.w, r.h, UI_FLAT ? UI_PAL.border : UI_DKSHADOW);
     draw_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, UI_WINDOW);
     if (combo.hi < combo.top)
         combo.top = combo.hi;
@@ -611,6 +695,16 @@ int ui_combo(unsigned id, const char *const *items, int n, int *sel, int x, int 
         combo.changed = 0;
         changed = 1;
     }
+    if (UI_FLAT) {
+        /* Flat: a button-like box with the arrow at the right. */
+        flat_box(x, y, w, h,
+                 over || open ? theme_mix(UI_PAL.button, UI_PAL.accent, 36) : UI_PAL.button,
+                 focused || open || over ? UI_PAL.accent : UI_PAL.border);
+        ui_icon(ICON_ARROW_DOWN, bx + 4, y + 9, UI_PAL.button_text);
+        if (*sel >= 0 && *sel < n)
+            draw_text_fit(x + 6, y + 14, bx - x - 8, UI_FONT, 0, UI_PAL.button_text, items[*sel]);
+        return changed;
+    }
     draw_rect(x + 2, y + 2, w - 4, h - 4, UI_WINDOW);
     ui_bevel(x, y, w, h, BEVEL_SUNKEN);
     draw_rect(bx, y + 2, 16, h - 4, UI_FACE);
@@ -637,6 +731,15 @@ void ui_progress(int x, int y, int w, int h, int pct)
         pct = 0;
     if (pct > 100)
         pct = 100;
+    if (UI_FLAT) {
+        /* A thin rounded track with a solid accent fill, centred. */
+        int th = 6, ty = y + (h - th) / 2, fw = w * pct / 100;
+        flat_box(x, ty, w, th, theme_mix(UI_PAL.face, UI_PAL.text, 40),
+                 theme_mix(UI_PAL.face, UI_PAL.text, 40));
+        if (fw >= 2)
+            flat_box(x, ty, fw, th, UI_PAL.accent, UI_PAL.accent);
+        return;
+    }
     draw_rect(x, y, w, h, UI_FACE);
     ui_bevel(x, y, w, h, BEVEL_THIN_DOWN);
     filled = inner * pct / 100;
@@ -694,6 +797,19 @@ int ui_slider(unsigned id, int *value, int min, int max, int x, int y, int w)
         *value = max;
     tx = x + 6 + (int)((long)(*value - min) * track_w / range) - 5;
 
+    if (UI_FLAT) {
+        /* A groove filled with the accent up to a round handle. */
+        int cx = tx + 5, cy = y + 10;
+        unsigned groove = theme_mix(UI_PAL.face, UI_PAL.text, 48);
+        flat_box(x + 2, cy - 2, w - 4, 4, groove, groove);
+        if (cx - (x + 2) >= 2)
+            flat_box(x + 2, cy - 2, cx - (x + 2), 4, UI_PAL.accent, UI_PAL.accent);
+        disc(cx, cy, 7, (UI.active == id || focused || over) ? UI_PAL.accent : UI_PAL.border);
+        disc(cx, cy, 6, UI_PAL.button);
+        if (focused || UI.active == id)
+            disc(cx, cy, 6, theme_mix(UI_PAL.button, UI_PAL.accent, 64));
+        return *value != old;
+    }
     /* The groove, then the thumb with a point at the bottom. */
     ui_bevel(x + 2, y + 8, w - 4, 4, BEVEL_SUNKEN);
     draw_rect(tx, y + 1, 11, 15, UI_FACE);
@@ -773,6 +889,40 @@ static int scroll_bar(unsigned id, int vertical, int x, int y, int len, int *pos
         *pos = 0;
     tpos = max > 0 ? (track - thumb) * *pos / max : 0;
 
+    if (UI_FLAT) {
+        /* Flat: a plain track, a rounded thumb, and arrows without
+         * buttons around them. */
+        int pa = UI.active == (id ^ 1) && over_a && UI.down[0];
+        int pb = UI.active == (id ^ 2) && over_b && UI.down[0];
+        int grab = UI.active == (id ^ 3) && UI.down[0];
+        unsigned track_col = theme_mix(UI_PAL.window, UI_PAL.face, 128);
+        unsigned thumb_col = theme_mix(track_col, UI_PAL.text, grab ? 150 : over_t ? 120 : 80);
+        unsigned arrow = enabled ? UI_PAL.text : UI_PAL.graytext;
+        if (vertical) {
+            draw_rect(x, y, UI_SCROLL_W, len, track_col);
+            draw_rect(x, y, 1, len, UI_PAL.border);
+            if (pa || over_a)
+                draw_rect(x + 1, ay, UI_SCROLL_W - 1, UI_SCROLL_W, UI_PAL.hover);
+            if (pb || over_b)
+                draw_rect(x + 1, by, UI_SCROLL_W - 1, UI_SCROLL_W, UI_PAL.hover);
+            ui_icon(ICON_ARROW_UP, ax + 4, ay + 6, arrow);
+            ui_icon(ICON_ARROW_DOWN, bx + 4, by + 6, arrow);
+            if (enabled)
+                flat_box(x + 4, t0 + tpos + 1, UI_SCROLL_W - 7, thumb - 2, thumb_col, thumb_col);
+        } else {
+            draw_rect(x, y, len, UI_SCROLL_W, track_col);
+            draw_rect(x, y, len, 1, UI_PAL.border);
+            if (pa || over_a)
+                draw_rect(ax, y + 1, UI_SCROLL_W, UI_SCROLL_W - 1, UI_PAL.hover);
+            if (pb || over_b)
+                draw_rect(bx, y + 1, UI_SCROLL_W, UI_SCROLL_W - 1, UI_PAL.hover);
+            ui_icon(ICON_ARROW_LEFT, ax + 6, ay + 4, arrow);
+            ui_icon(ICON_ARROW_RIGHT, bx + 6, by + 4, arrow);
+            if (enabled)
+                flat_box(t0 + tpos + 1, y + 4, thumb - 2, UI_SCROLL_W - 7, thumb_col, thumb_col);
+        }
+        return *pos != old;
+    }
     if (vertical) {
         int pa = UI.active == (id ^ 1) && over_a && UI.down[0];
         int pb = UI.active == (id ^ 2) && over_b && UI.down[0];
@@ -860,6 +1010,21 @@ rect ui_tabs(unsigned id, const char *const *labels, int n, int *sel, int x, int
                     *sel = i;
                     UI.focus = id;
                 }
+                if (UI_FLAT) {
+                    /* Flat: the selected tab is open into the body with
+                     * an accent line on top; the others are plain text. */
+                    if (s) {
+                        draw_rect(bx, by, bw, bh, UI_FACE);
+                        draw_rect(bx, by, 1, bh, UI_PAL.border);
+                        draw_rect(bx + bw - 1, by, 1, bh, UI_PAL.border);
+                        draw_rect(bx, by, bw, 2, UI_PAL.accent);
+                    } else if (ui_hover(bx, by, bw, bh)) {
+                        draw_rect(bx + 1, by + 1, bw - 2, bh - 2, UI_PAL.hover);
+                    }
+                    draw_text(bx + (bw - tw) / 2 + 6, by + 13, UI_FONT, 0,
+                              s ? UI_TEXT : UI_GRAYTEXT, labels[i]);
+                    continue;
+                }
                 draw_rect(bx, by, bw, bh, UI_FACE);
                 draw_rect(bx + 2, by, bw - 4, 1, UI_HILIGHT);
                 draw_rect(bx + 1, by + 1, 1, 1, UI_HILIGHT);
@@ -894,13 +1059,19 @@ void ui_status_bar(rect r, const char *const *panes, const int *widths, int n)
     spare = r.w - 4 - fixed - 14;
     for (i = 0; i < n; i++) {
         int w = widths[i] >= 0 ? widths[i] : (flex ? spare / flex - 2 : 0);
-        ui_bevel(x, r.y + 2, w, r.h - 3, BEVEL_THIN_DOWN);
+        if (!UI_FLAT)
+            ui_bevel(x, r.y + 2, w, r.h - 3, BEVEL_THIN_DOWN);
+        else if (i > 0)
+            draw_rect(x - 1, r.y + 4, 1, r.h - 7, UI_PAL.border);
         draw_clip_push(x + 1, r.y + 3, w - 2, r.h - 5);
         draw_text(x + 3, r.y + 14, UI_FONT, 0, UI_TEXT, panes[i]);
         draw_clip_pop();
         x += w + 2;
     }
-    ui_icon(ICON_GRIP, r.x + r.w - 13, r.y + r.h - 13, 0);
+    if (UI_FLAT)
+        draw_rect(r.x, r.y, r.w, 1, UI_PAL.border);
+    else
+        ui_icon(ICON_GRIP, r.x + r.w - 13, r.y + r.h - 13, 0);
 }
 
 /* ---- list view ---- */
@@ -976,8 +1147,15 @@ int ui_list(ui_listview *lv, int x, int y, int w, int h)
             }
             result |= LV_SORTED;
         }
-        draw_rect(cx, y + 2, cw, hdr, UI_FACE);
-        ui_bevel(cx, y + 2, cw, hdr, pushed ? BEVEL_THIN_DOWN : BEVEL_RAISED);
+        if (UI_FLAT) {
+            draw_rect(cx, y + 2, cw, hdr, pushed || over ? UI_PAL.hover : UI_WINDOW);
+            draw_rect(cx + cw - 1, y + 5, 1, hdr - 7, UI_PAL.border);
+            draw_rect(cx, y + 2 + hdr - 1, cw, 1, UI_PAL.border);
+            pushed = 0;
+        } else {
+            draw_rect(cx, y + 2, cw, hdr, UI_FACE);
+            ui_bevel(cx, y + 2, cw, hdr, pushed ? BEVEL_THIN_DOWN : BEVEL_RAISED);
+        }
         draw_clip_push(cx + 2, y + 2, cw - 4, hdr);
         draw_text_fit(cx + 6 + pushed, y + 14 + pushed, cw - 12 - (lv->sort_col == c ? 10 : 0),
                       UI_FONT, 0, UI_TEXT, lv->cols[c].title);
@@ -987,8 +1165,13 @@ int ui_list(ui_listview *lv, int x, int y, int w, int h)
         cx += cw;
     }
     if (cx < x + 2 + inner_w) {
-        draw_rect(cx, y + 2, x + 2 + inner_w - cx, hdr, UI_FACE);
-        ui_bevel(cx, y + 2, x + 2 + inner_w - cx, hdr, BEVEL_RAISED);
+        if (UI_FLAT) {
+            draw_rect(cx, y + 2, x + 2 + inner_w - cx, hdr, UI_WINDOW);
+            draw_rect(cx, y + 2 + hdr - 1, x + 2 + inner_w - cx, 1, UI_PAL.border);
+        } else {
+            draw_rect(cx, y + 2, x + 2 + inner_w - cx, hdr, UI_FACE);
+            ui_bevel(cx, y + 2, x + 2 + inner_w - cx, hdr, BEVEL_RAISED);
+        }
     }
     draw_clip_pop();
 
@@ -1054,7 +1237,7 @@ int ui_list(ui_listview *lv, int x, int y, int w, int h)
         cx = x + 2 - lv->hscroll;
         for (c = 0; c < lv->n_cols; c++) {
             int cw = lv->cols[c].width, off = c == 0 ? icon_w : 0;
-            unsigned fg = sel ? (focused ? UI_SELTEXT : UI_TEXT) : UI_TEXT;
+            unsigned fg = sel ? (focused ? UI_SELTEXT : UI_PAL.seltext_inactive) : UI_TEXT;
             lv->cell(row, c, cell, sizeof(cell), lv->ud);
             if (c == 0) {
                 if (lv->row_icon)
@@ -1065,7 +1248,7 @@ int ui_list(ui_listview *lv, int x, int y, int w, int h)
                         tw = cw - off - 2;
                     /* Full-row selection, as Explorer's details view. */
                     draw_rect(cx + off + 2, ry, total_w - off - 2, UI_ROW_H,
-                              focused ? UI_SELECT : UI_FACE);
+                              focused ? UI_SELECT : UI_PAL.select_inactive);
                 }
             }
             draw_clip_push(cx + off + 2, ry, cw - off - 4, UI_ROW_H);
@@ -1073,7 +1256,7 @@ int ui_list(ui_listview *lv, int x, int y, int w, int h)
             draw_clip_pop();
             cx += cw;
         }
-        if (sel && focused)
+        if (sel && focused && !UI_FLAT)
             draw_focus_rect(x + 2 - lv->hscroll + icon_w + 2, ry, total_w - icon_w - 2, UI_ROW_H,
                             COL(0xFF, 0xFF, 0x7F));
     }
@@ -1087,7 +1270,8 @@ int ui_list(ui_listview *lv, int x, int y, int w, int h)
         ui_hscroll(lv->id ^ 0xB0, x + 2, y + 2 + hdr + inner_h, inner_w, &lv->hscroll, total_w,
                    inner_w);
     if (need_v && need_h)
-        draw_rect(x + 2 + inner_w, y + 2 + hdr + inner_h, UI_SCROLL_W, UI_SCROLL_W, UI_FACE);
+        draw_rect(x + 2 + inner_w, y + 2 + hdr + inner_h, UI_SCROLL_W, UI_SCROLL_W,
+                  UI_FLAT ? theme_mix(UI_PAL.window, UI_PAL.face, 128) : UI_FACE);
     return result;
 }
 
@@ -1247,7 +1431,7 @@ int ui_tree(ui_treeview *tv, int x, int y, int w, int h)
         int lx = x + 2 + nd->depth * 19 + 9, ix = lx + 10, tx = ix + 19;
         int tw = draw_text_width(UI_FONT, 0, nd->label) + 4;
         /* Lines: the ancestors' verticals, then this node's elbow. */
-        for (d = 0; d < nd->depth; d++) {
+        for (d = 0; d < nd->depth && !UI_FLAT; d++) {
             int a, anc = -1;
             for (a = k - 1; a >= 0; a--)
                 if (tv->nodes[a].depth == d) {
@@ -1257,17 +1441,30 @@ int ui_tree(ui_treeview *tv, int x, int y, int w, int h)
             if (anc >= 0 && has_next_sibling(tv, anc, d))
                 dotted_v(x + 2 + d * 19 + 9, ry, ry + UI_ROW_H);
         }
-        dotted_v(lx, ry, has_next_sibling(tv, k, nd->depth) ? ry + UI_ROW_H : ry + 8);
-        dotted_h(lx, ix, ry + 8);
-        if (nd->has_children)
-            ui_icon(nd->expanded ? ICON_TREE_MINUS : ICON_TREE_PLUS, lx - 4, ry + 4, 0);
+        if (UI_FLAT && k == tv->sel)
+            /* Flat: the whole row, as Breeze and Adwaita select; under
+             * the arrow and icon. */
+            draw_rect(x + 2, ry, inner_w, UI_ROW_H, focused ? UI_SELECT : UI_PAL.select_inactive);
+        if (UI_FLAT) {
+            /* Flat: no lines; an arrow for nodes with children. */
+            if (nd->has_children)
+                ui_icon(nd->expanded ? ICON_ARROW_DOWN : ICON_ARROW_RIGHT,
+                        nd->expanded ? lx - 3 : lx - 1, nd->expanded ? ry + 6 : ry + 4,
+                        UI_GRAYTEXT);
+        } else {
+            dotted_v(lx, ry, has_next_sibling(tv, k, nd->depth) ? ry + UI_ROW_H : ry + 8);
+            dotted_h(lx, ix, ry + 8);
+            if (nd->has_children)
+                ui_icon(nd->expanded ? ICON_TREE_MINUS : ICON_TREE_PLUS, lx - 4, ry + 4, 0);
+        }
         ui_icon(nd->expanded && nd->has_children ? nd->icon_open : nd->icon, ix + 1, ry, 0);
-        if (k == tv->sel) {
+        if (k == tv->sel && !UI_FLAT) {
             draw_rect(tx - 2, ry + 1, tw, UI_ROW_H - 2, focused ? UI_SELECT : UI_FACE);
             if (focused)
                 draw_focus_rect(tx - 2, ry + 1, tw, UI_ROW_H - 2, COL(0xFF, 0xFF, 0x7F));
         }
-        draw_text(tx, ry + 12, UI_FONT, 0, k == tv->sel && focused ? UI_SELTEXT : UI_TEXT,
+        draw_text(tx, ry + 12, UI_FONT, 0,
+                  k == tv->sel ? (focused ? UI_SELTEXT : UI_PAL.seltext_inactive) : UI_TEXT,
                   nd->label);
     }
     draw_clip_pop();

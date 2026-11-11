@@ -146,7 +146,9 @@ cmake --install build-linux --prefix ~/.local
 It keeps its settings and station files in `~/.local/share/dxgarden/`;
 the program's own files go in `~/.local/share/club.hiraeth.dxgarden/`,
 so reinstalling never touches your stations or favourites.
-It works on KDE Plasma and GNOME, on Wayland and X11. On KDE Plasma it
+It works on KDE Plasma and GNOME, on Wayland and X11. View, Look switches
+between the classic look and a flat one in your desktop's colours (your
+KDE colour scheme, or GNOME's light or dark style). On KDE Plasma it
 runs through XWayland by default (SDL's choice there); to run it as a
 native Wayland app, start it with `SDL_VIDEO_DRIVER=wayland dxgarden`. If
 the menu entry doesn't show up straight away on KDE, run `kbuildsycoca6`.

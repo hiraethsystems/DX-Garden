@@ -117,9 +117,9 @@ static void draw_tooltip(void)
         x = draw_width() - w;
     if (y + h > draw_height())
         y = UI.tip_y - h - 2;
-    draw_rect(x, y, w, h, UI_DKSHADOW);
+    draw_rect(x, y, w, h, UI_FLAT ? UI_PAL.border : UI_DKSHADOW);
     draw_rect(x + 1, y + 1, w - 2, h - 2, UI_TOOLTIP);
-    draw_text(x + 3, y + 12, UI_FONT, 0, UI_TEXT, UI.tip);
+    draw_text(x + 3, y + 12, UI_FONT, 0, UI_PAL.tooltip_text, UI.tip);
 }
 
 void ui_end(void)
@@ -214,8 +214,56 @@ static void edge(int x, int y, int w, int h, unsigned tl, unsigned br)
     draw_rect(x + w - 1, y, 1, h - 1, br);
 }
 
+/* A one-pixel frame with its corner pixels left out, which reads as a
+ * slightly rounded corner. */
+static void frame_round(int x, int y, int w, int h, unsigned col)
+{
+    if (w < 3 || h < 3) {
+        edge(x, y, w, h, col, col);
+        return;
+    }
+    draw_rect(x + 1, y, w - 2, 1, col);
+    draw_rect(x + 1, y + h - 1, w - 2, 1, col);
+    draw_rect(x, y + 1, 1, h - 2, col);
+    draw_rect(x + w - 1, y + 1, 1, h - 2, col);
+}
+
+void ui_frame(int x, int y, int w, int h, unsigned col, int round)
+{
+    if (round)
+        frame_round(x, y, w, h, col);
+    else
+        edge(x, y, w, h, col, col);
+}
+
+/* Flat looks: every bevel is a single line in the frame colour. Pressed
+ * and pushed ones take the accent. Status bar panes and hovered toolbar
+ * items are drawn by their widgets. */
+static void flat_bevel(int x, int y, int w, int h, bevel_style s)
+{
+    switch (s) {
+    case BEVEL_RAISED:
+    case BEVEL_SUNKEN:
+        frame_round(x, y, w, h, UI_PAL.border);
+        break;
+    case BEVEL_PRESSED:
+        frame_round(x, y, w, h, UI_PAL.accent);
+        break;
+    case BEVEL_WINDOW:
+    case BEVEL_ETCHED:
+    case BEVEL_THIN_UP:
+    case BEVEL_THIN_DOWN:
+        edge(x, y, w, h, UI_PAL.border, UI_PAL.border);
+        break;
+    }
+}
+
 void ui_bevel(int x, int y, int w, int h, bevel_style s)
 {
+    if (UI_FLAT) {
+        flat_bevel(x, y, w, h, s);
+        return;
+    }
     switch (s) {
     case BEVEL_RAISED:
         edge(x, y, w, h, UI_HILIGHT, UI_DKSHADOW);
@@ -286,6 +334,9 @@ int ui_text_wrap(int x, int y, int w, unsigned col, const char *s)
 
 /* ---- title bars ---- */
 
+/* The title bar being drawn, for its buttons in the flat looks. */
+static unsigned caption_bg, caption_fg;
+
 static int caption_button(unsigned id, int x, int y, icon_id glyph, int enabled)
 {
     int over = ui_hover(x, y, 16, 14), pushed, clicked = 0;
@@ -294,6 +345,28 @@ static int caption_button(unsigned id, int x, int y, icon_id glyph, int enabled)
     pushed = UI.active == id && over && UI.down[0];
     if (UI.active == id && UI.released[0] && over)
         clicked = 1;
+    if (UI_FLAT) {
+        /* Flat: just the glyph, on a highlight under the mouse (red for
+         * close, as Breeze and Adwaita do). */
+        const atlas_region *r = icon(glyph);
+        int gx = x + (16 - r->w) / 2, gy = y + (14 - r->h) / 2;
+        unsigned fg = caption_fg;
+        if (glyph == ICON_MIN)
+            gy = y + 9;
+        if (enabled && (over || pushed)) {
+            unsigned bg = glyph == ICON_CLOSE ? UI_PAL.close_hover
+                                              : theme_mix(caption_bg, caption_fg, pushed ? 80 : 48);
+            draw_rect(x + 1, y, 14, 14, bg);
+            draw_rect(x, y + 1, 16, 12, bg);
+            if (glyph == ICON_CLOSE)
+                fg = COL(0xFF, 0xFF, 0xFF);
+        }
+        if (enabled)
+            ui_icon(glyph, gx, gy, fg);
+        else
+            ui_icon_disabled(glyph, gx, gy);
+        return enabled && clicked;
+    }
     draw_rect(x, y, 16, 14, UI_FACE);
     ui_bevel(x, y, 16, 14, pushed ? BEVEL_SUNKEN : BEVEL_RAISED);
     {
@@ -317,12 +390,19 @@ int ui_title_bar(unsigned id, int x, int y, int w, const char *title, int ic, in
     int r1 = (int)(c1 & 0xFF), g1 = (int)((c1 >> 8) & 0xFF), b1 = (int)((c1 >> 16) & 0xFF);
     int r2 = (int)(c2 & 0xFF), g2 = (int)((c2 >> 8) & 0xFF), b2 = (int)((c2 >> 16) & 0xFF);
 
-    /* The gradient in 2-pixel steps, close to what a 16-bit screen showed. */
-    for (i = 0; i < w; i += 2) {
-        int r = r1 + (r2 - r1) * i / (w > 1 ? w - 1 : 1);
-        int g = g1 + (g2 - g1) * i / (w > 1 ? w - 1 : 1);
-        int b = b1 + (b2 - b1) * i / (w > 1 ? w - 1 : 1);
-        draw_rect(x + i, y, i + 2 <= w ? 2 : 1, UI_CAPTION_H, COL(r, g, b));
+    caption_bg = c1;
+    caption_fg = active ? UI_PAL.title_text_a : UI_PAL.title_text_i;
+    /* The gradient in 2-pixel steps, close to what a 16-bit screen showed.
+     * Flat looks have the same colour at both ends. */
+    if (c1 == c2) {
+        draw_rect(x, y, w, UI_CAPTION_H, c1);
+    } else {
+        for (i = 0; i < w; i += 2) {
+            int r = r1 + (r2 - r1) * i / (w > 1 ? w - 1 : 1);
+            int g = g1 + (g2 - g1) * i / (w > 1 ? w - 1 : 1);
+            int b = b1 + (b2 - b1) * i / (w > 1 ? w - 1 : 1);
+            draw_rect(x + i, y, i + 2 <= w ? 2 : 1, UI_CAPTION_H, COL(r, g, b));
+        }
     }
     if (ic >= 0) {
         ui_icon((icon_id)ic, x + 2, y + 1, 0);
@@ -345,7 +425,7 @@ int ui_title_bar(unsigned id, int x, int y, int w, const char *title, int ic, in
             result = UI_TB_MIN;
     }
     draw_clip_push(tx, y, bx - tx - 2, UI_CAPTION_H);
-    draw_text_fit(tx, y + 13, bx - tx - 4, UI_FONT, 1, active ? UI_HILIGHT : UI_LIGHT, title);
+    draw_text_fit(tx, y + 13, bx - tx - 4, UI_FONT, 1, caption_fg, title);
     draw_clip_pop();
     return result;
 }
@@ -887,26 +967,38 @@ static void choose(const ui_menu_item *it)
 static void draw_level(const menu_level *L, int lvl)
 {
     int i, y = L->y + 3;
-    draw_rect(L->x, L->y, L->w, L->h, UI_FACE);
+    draw_rect(L->x, L->y, L->w, L->h, UI_FLAT ? UI_WINDOW : UI_FACE);
     ui_bevel(L->x, L->y, L->w, L->h, BEVEL_WINDOW);
     for (i = 0; i < L->m->n; i++) {
         const ui_menu_item *it = &L->m->items[i];
         int h = item_h(it), hi = i == L->hi && !(it->flags & MI_SEPARATOR);
         int dis = (it->flags & MI_DISABLED) != 0;
-        unsigned fg = hi ? UI_SELTEXT : UI_TEXT;
+        unsigned fg = hi && !UI_FLAT ? UI_SELTEXT : UI_TEXT;
         if (it->flags & MI_SEPARATOR) {
-            draw_rect(L->x + 3, y + 3, L->w - 6, 1, UI_SHADOW);
-            draw_rect(L->x + 3, y + 4, L->w - 6, 1, UI_HILIGHT);
+            if (UI_FLAT) {
+                draw_rect(L->x + 6, y + 3, L->w - 12, 1, UI_PAL.border);
+            } else {
+                draw_rect(L->x + 3, y + 3, L->w - 6, 1, UI_SHADOW);
+                draw_rect(L->x + 3, y + 4, L->w - 6, 1, UI_HILIGHT);
+            }
             y += h;
             continue;
         }
-        if (hi)
+        /* Flat looks highlight with a tint and keep the text colour, as
+         * Breeze and Adwaita menus do. */
+        if (hi && UI_FLAT) {
+            draw_rect(L->x + 3, y + 1, L->w - 6, h - 2, UI_PAL.hover);
+            draw_rect(L->x + 4, y, L->w - 8, h, UI_PAL.hover);
+        } else if (hi) {
             draw_rect(L->x + 3, y, L->w - 6, h, UI_SELECT);
+        }
         if (it->flags & MI_CHECKED) {
             icon_id g = (it->flags & MI_RADIO) ? ICON_MENU_DOT : ICON_MENU_CHECK;
             ui_icon(g, L->x + 8, y + 5 + ((it->flags & MI_RADIO) ? 1 : 0), dis ? UI_SHADOW : fg);
         }
-        if (dis && !hi) {
+        if (dis && UI_FLAT) {
+            ui_text_mnemonic(L->x + 20, y + 12, UI_GRAYTEXT, it->label);
+        } else if (dis && !hi) {
             ui_text_mnemonic(L->x + 21, y + 13, UI_HILIGHT, it->label);
             ui_text_mnemonic(L->x + 20, y + 12, UI_SHADOW, it->label);
         } else {
@@ -914,8 +1006,8 @@ static void draw_level(const menu_level *L, int lvl)
         }
         if (it->shortcut) {
             int sw = draw_text_width(UI_FONT, 0, it->shortcut);
-            draw_text(L->x + L->w - 22 - sw, y + 12, UI_FONT, 0, dis ? UI_SHADOW : fg,
-                      it->shortcut);
+            draw_text(L->x + L->w - 22 - sw, y + 12, UI_FONT, 0,
+                      UI_FLAT ? UI_GRAYTEXT : dis ? UI_SHADOW : fg, it->shortcut);
         }
         if (it->sub)
             ui_icon(ICON_SUBMENU, L->x + L->w - 12, y + 5, fg);
@@ -1181,6 +1273,15 @@ int ui_menu_bar(int x, int y, int w, const char *const *labels, ui_menu *menus, 
     for (i = 0; i < n; i++) {
         int open = bar_open == i && depth, hot = (over == i && bar_open < 0 && !depth) ||
                                                  (bar_keyboard && bar_open < 0 && bar_hi == i);
+        if (UI_FLAT) {
+            if (open || hot) {
+                unsigned bg = open ? theme_mix(UI_PAL.hover, UI_PAL.accent, 64) : UI_PAL.hover;
+                draw_rect(ix[i] + 1, y + 1, iw[i] - 2, UI_MENU_H - 2, bg);
+                draw_rect(ix[i], y + 2, iw[i], UI_MENU_H - 4, bg);
+            }
+            ui_text_mnemonic(ix[i] + 6, y + 13, UI_TEXT, labels[i]);
+            continue;
+        }
         if (open)
             ui_bevel(ix[i], y + 1, iw[i], UI_MENU_H - 2, BEVEL_THIN_DOWN);
         else if (hot)

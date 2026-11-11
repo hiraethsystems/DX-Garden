@@ -52,6 +52,7 @@ add_executable(dxgarden_desktop WIN32
     desktop/log.c
     desktop/main.c
     desktop/player.c
+    desktop/theme.c
     desktop/ui.c
     desktop/ui_widgets.c
 )

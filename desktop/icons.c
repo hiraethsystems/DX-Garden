@@ -694,6 +694,12 @@ void ui_icon(icon_id id, int x, int y, unsigned col)
  * shape in grey. */
 void ui_icon_disabled(icon_id id, int x, int y)
 {
+    if (UI_FLAT) {
+        /* Flat looks: no embossing, just the inactive text colour. */
+        draw_image(&regions[id], x, y,
+                   mono[id] ? UI_PAL.graytext : theme_mix(UI_PAL.face, UI_PAL.graytext, 160));
+        return;
+    }
     draw_image(&regions[id], x + 1, y + 1, UI_HILIGHT);
     if (mono[id]) {
         draw_image(&regions[id], x, y, UI_SHADOW);

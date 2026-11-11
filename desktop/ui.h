@@ -7,9 +7,11 @@
  * they return what the user did. A control is known by an id made from its
  * label or a string you pass, within its window.
  *
- * The look follows the standard 9x scheme: grey 3D faces, two-pixel bevels,
- * navy selection and a gradient title bar. The art (icons, glyphs) is our
- * own; no Microsoft artwork, fonts or sounds are used.
+ * The Classic look follows the standard 9x scheme: grey 3D faces, two-pixel
+ * bevels, navy selection and a gradient title bar. The art (icons, glyphs)
+ * is our own; no Microsoft artwork, fonts or sounds are used. The flat
+ * looks (theme.h) draw the same widgets with single-pixel frames in a
+ * desktop's colours.
  */
 #ifndef DXG_UI_H
 #define DXG_UI_H
@@ -17,26 +19,28 @@
 #include <SDL3/SDL.h>
 
 #include "draw.h"
+#include "theme.h"
 
-/* ---- colours (the standard 9x scheme) ---- */
+/* ---- colours: the look's palette (theme.h); Classic is the standard 9x
+ * scheme ---- */
 
-#define UI_FACE      COL(0xC0, 0xC0, 0xC0)
-#define UI_LIGHT     COL(0xDF, 0xDF, 0xDF)
-#define UI_HILIGHT   COL(0xFF, 0xFF, 0xFF)
-#define UI_SHADOW    COL(0x80, 0x80, 0x80)
-#define UI_DKSHADOW  COL(0x00, 0x00, 0x00)
-#define UI_TEXT      COL(0x00, 0x00, 0x00)
-#define UI_GRAYTEXT  COL(0x80, 0x80, 0x80)
-#define UI_WINDOW    COL(0xFF, 0xFF, 0xFF)
-#define UI_SELECT    COL(0x00, 0x00, 0x80)
-#define UI_SELTEXT   COL(0xFF, 0xFF, 0xFF)
-#define UI_TITLE_A1  COL(0x00, 0x00, 0x80)
-#define UI_TITLE_A2  COL(0x10, 0x84, 0xD0)
-#define UI_TITLE_I1  COL(0x80, 0x80, 0x80)
-#define UI_TITLE_I2  COL(0xC0, 0xC0, 0xC0)
-#define UI_WORKSPACE COL(0x80, 0x80, 0x80)
-#define UI_DESKTOP   COL(0x00, 0x80, 0x80)
-#define UI_TOOLTIP   COL(0xFF, 0xFF, 0xE1)
+#define UI_FACE      (UI_PAL.face)
+#define UI_LIGHT     (UI_PAL.light)
+#define UI_HILIGHT   (UI_PAL.hilight)
+#define UI_SHADOW    (UI_PAL.shadow)
+#define UI_DKSHADOW  (UI_PAL.dkshadow)
+#define UI_TEXT      (UI_PAL.text)
+#define UI_GRAYTEXT  (UI_PAL.graytext)
+#define UI_WINDOW    (UI_PAL.window)
+#define UI_SELECT    (UI_PAL.select)
+#define UI_SELTEXT   (UI_PAL.seltext)
+#define UI_TITLE_A1  (UI_PAL.title_a1)
+#define UI_TITLE_A2  (UI_PAL.title_a2)
+#define UI_TITLE_I1  (UI_PAL.title_i1)
+#define UI_TITLE_I2  (UI_PAL.title_i2)
+#define UI_WORKSPACE (UI_PAL.workspace)
+#define UI_DESKTOP   (UI_PAL.desktop)
+#define UI_TOOLTIP   (UI_PAL.tooltip)
 
 /* Font slots (font.h): 0 is the 11 px interface size. */
 #define UI_FONT 0
@@ -64,6 +68,8 @@ typedef enum {
 } bevel_style;
 
 void ui_bevel(int x, int y, int w, int h, bevel_style s);
+/* A one-pixel frame; `round` leaves the corner pixels out. */
+void ui_frame(int x, int y, int w, int h, unsigned col, int round);
 /* Filled with the 3D face colour inside the bevel. */
 void ui_panel(int x, int y, int w, int h, bevel_style s);
 

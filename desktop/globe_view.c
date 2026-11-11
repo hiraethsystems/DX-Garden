@@ -267,14 +267,15 @@ static void input(rect g, float s, unsigned id, double dt)
 static void crosshair(int cx, int cy, double progress)
 {
     int i;
-    draw_rect(cx - 11, cy - 1, 8, 3, UI_DKSHADOW);
-    draw_rect(cx + 4, cy - 1, 8, 3, UI_DKSHADOW);
-    draw_rect(cx - 1, cy - 11, 3, 8, UI_DKSHADOW);
-    draw_rect(cx - 1, cy + 4, 3, 8, UI_DKSHADOW);
-    draw_rect(cx - 10, cy, 6, 1, UI_HILIGHT);
-    draw_rect(cx + 5, cy, 6, 1, UI_HILIGHT);
-    draw_rect(cx, cy - 10, 1, 6, UI_HILIGHT);
-    draw_rect(cx, cy + 5, 1, 6, UI_HILIGHT);
+    /* Over the imagery: black and white whatever the look. */
+    draw_rect(cx - 11, cy - 1, 8, 3, COL(0, 0, 0));
+    draw_rect(cx + 4, cy - 1, 8, 3, COL(0, 0, 0));
+    draw_rect(cx - 1, cy - 11, 3, 8, COL(0, 0, 0));
+    draw_rect(cx - 1, cy + 4, 3, 8, COL(0, 0, 0));
+    draw_rect(cx - 10, cy, 6, 1, COL(0xFF, 0xFF, 0xFF));
+    draw_rect(cx + 5, cy, 6, 1, COL(0xFF, 0xFF, 0xFF));
+    draw_rect(cx, cy - 10, 1, 6, COL(0xFF, 0xFF, 0xFF));
+    draw_rect(cx, cy + 5, 1, 6, COL(0xFF, 0xFF, 0xFF));
     if (progress > 0 && progress < 1) {
         int n = (int)(64 * progress);
         for (i = 0; i < n; i++) {
@@ -289,7 +290,7 @@ static void crosshair(int cx, int cy, double progress)
 static void overlay_text(int x, int y, const char *s)
 {
     draw_text(x + 1, y + 1, UI_FONT, 0, COLA(0, 0, 0, 0xC0), s);
-    draw_text(x, y, UI_FONT, 0, UI_HILIGHT, s);
+    draw_text(x, y, UI_FONT, 0, COL(0xFF, 0xFF, 0xFF), s);
 }
 
 static void panel(rect r, unsigned id)
@@ -348,7 +349,8 @@ static void panel(rect r, unsigned id)
         else
             snprintf(line, sizeof(line), "Press Enter or click the dot to listen");
         draw_text_fit(x + 20, y + 12, right - x - 20, UI_FONT, 0,
-                      line[0] == 'P' ? COL(0, 0x60, 0) : UI_GRAYTEXT, line);
+                      line[0] == 'P' ? (UI_FLAT ? UI_PAL.accent : COL(0, 0x60, 0)) : UI_GRAYTEXT,
+                      line);
     } else {
         draw_text(x, y + 12, UI_FONT, 1, UI_TEXT, "Turn the globe to a place");
         draw_text(x, y + 32, UI_FONT, 0, UI_GRAYTEXT,

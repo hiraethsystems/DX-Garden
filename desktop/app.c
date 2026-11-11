@@ -37,6 +37,8 @@ enum {
     CMD_TOOLBAR, CMD_STATUSBAR, CMD_SMOOTH, CMD_SCALE_AUTO, CMD_ZOOM_IN, CMD_ZOOM_OUT,
     CMD_CASCADE, CMD_TILE, CMD_SHOW_STATIONS, CMD_SHOW_PLAYER, CMD_GALLERY, CMD_ABOUT,
     CMD_SHOW_GLOBE, CMD_AUTO_TUNE, CMD_GLOBE_FILL,
+    CMD_LOOK_FIRST, /* CMD_LOOK_FIRST + a look_setting */
+    CMD_LOOK_LAST = CMD_LOOK_FIRST + LOOK_SET_COUNT - 1,
     CMD_SCALE_FIRST /* CMD_SCALE_FIRST + i is SCALES[i]; keep last */
 };
 
@@ -92,6 +94,7 @@ static void load_settings(void)
     A.show_status = config_get_int(c, "ui", "status_bar", 1, 0, 1);
     A.volume = config_get_int(c, "player", "volume", 80, 0, 100);
     font_set_smooth(config_get_int(c, "ui", "smooth_fonts", 0, 0, 1));
+    theme_set(theme_setting_from_name(config_get(c, "ui", "look")));
 }
 
 static void save_settings(void)
@@ -101,6 +104,7 @@ static void save_settings(void)
     config_set_int(c, "ui", "toolbar", A.show_toolbar);
     config_set_int(c, "ui", "status_bar", A.show_status);
     config_set_int(c, "ui", "smooth_fonts", font_smooth());
+    config_set(c, "ui", "look", theme_setting_name(theme_setting()));
     config_set_int(c, "player", "volume", A.volume);
     config_set_int(c, "ui", "globe_fills", A.w_globe->maximized);
     if (data_save_config(&A.d) != 0)
@@ -344,12 +348,22 @@ static ui_menu_item size_items[] = {
     { "S&maller", "Ctrl+-", CMD_ZOOM_OUT, 0, NULL },
 };
 static ui_menu size_menu = { size_items, 12 };
+/* Linux only: Windows has the Classic look alone. */
+static ui_menu_item look_items[] = {
+    { "&Classic", NULL, CMD_LOOK_FIRST + LOOK_SET_CLASSIC, MI_RADIO, NULL },
+    { NULL, NULL, 0, MI_SEPARATOR, NULL },
+    { "&System", NULL, CMD_LOOK_FIRST + LOOK_SET_SYSTEM, MI_RADIO, NULL },
+    { "&Breeze (KDE)", NULL, CMD_LOOK_FIRST + LOOK_SET_BREEZE, MI_RADIO, NULL },
+    { "&Adwaita (GNOME)", NULL, CMD_LOOK_FIRST + LOOK_SET_ADWAITA, MI_RADIO, NULL },
+};
+static ui_menu look_menu = { look_items, 5 };
 static ui_menu_item view_items[] = {
     { "&Toolbar", NULL, CMD_TOOLBAR, 0, NULL },
     { "Status &Bar", NULL, CMD_STATUSBAR, 0, NULL },
     { NULL, NULL, 0, MI_SEPARATOR, NULL },
     { "Interface &Size", NULL, 0, 0, &size_menu },
     { "S&mooth Screen Fonts", NULL, CMD_SMOOTH, 0, NULL },
+    { "&Look", NULL, 0, 0, &look_menu },
     { NULL, NULL, 0, MI_SEPARATOR, NULL },
     { "&Play Place Under Crosshair", NULL, CMD_AUTO_TUNE, 0, NULL },
     { "&Globe Fills Window", NULL, CMD_GLOBE_FILL, 0, NULL },
@@ -370,10 +384,32 @@ static ui_menu_item help_items[] = {
     { "&About DX Garden", NULL, CMD_ABOUT, 0, NULL },
 };
 static ui_menu menus[] = {
-    { file_items, 5 }, { station_items, 9 }, { view_items, 10 }, { window_items, 6 },
+    { file_items, 5 }, { station_items, 9 }, { view_items, 11 }, { window_items, 6 },
     { help_items, 3 },
 };
 static const char *menu_labels[] = { "&File", "&Station", "&View", "&Window", "&Help" };
+
+/* Sets the flags of the item with this command. */
+static void set_item_flags(ui_menu *m, int cmd, unsigned flags)
+{
+    int i;
+    for (i = 0; i < m->n; i++)
+        if (m->items[i].command == cmd)
+            m->items[i].flags = flags;
+}
+
+/* Windows has only the Classic look, so no Look menu. */
+static void drop_look_menu(void)
+{
+    ui_menu *m = &menus[2];
+    int i;
+    for (i = 0; i < m->n; i++)
+        if (m->items[i].sub == &look_menu) {
+            memmove(&m->items[i], &m->items[i + 1], sizeof(m->items[0]) * (size_t)(m->n - i - 1));
+            m->n--;
+            return;
+        }
+}
 
 static void update_menu_checks(void)
 {
@@ -396,8 +432,12 @@ static void update_menu_checks(void)
     for (i = 0; i < N_SCALES; i++)
         if (SCALES[i] == A.scale_setting)
             size_items[2 + i].flags |= MI_CHECKED;
-    view_items[6].flags = globeview_auto_tune() ? MI_CHECKED : 0;
-    view_items[7].flags = A.w_globe->maximized ? MI_CHECKED : 0;
+    set_item_flags(&menus[2], CMD_AUTO_TUNE, globeview_auto_tune() ? MI_CHECKED : 0);
+    set_item_flags(&menus[2], CMD_GLOBE_FILL, A.w_globe->maximized ? MI_CHECKED : 0);
+    for (i = 0; i < look_menu.n; i++)
+        if (look_items[i].command)
+            look_items[i].flags = MI_RADIO | (look_items[i].command - CMD_LOOK_FIRST ==
+                                                      (int)theme_setting() ? MI_CHECKED : 0);
     window_items[3].flags = A.w_globe->open ? MI_CHECKED : 0;
     window_items[4].flags = A.w_stations->open ? MI_CHECKED : 0;
     window_items[5].flags = A.w_player->open ? MI_CHECKED : 0;
@@ -479,6 +519,8 @@ static void command(int cmd)
     default:
         if (cmd >= CMD_SCALE_FIRST && cmd < CMD_SCALE_FIRST + N_SCALES)
             A.scale_setting = SCALES[cmd - CMD_SCALE_FIRST];
+        else if (cmd >= CMD_LOOK_FIRST && cmd <= CMD_LOOK_LAST)
+            theme_set((look_setting)(cmd - CMD_LOOK_FIRST));
         break;
     }
 }
@@ -534,6 +576,12 @@ int app_init(SDL_Window *win, const char *assets, const char *data)
 
     memset(&A, 0, sizeof(A));
     A.win = win;
+    theme_set(LOOK_SET_CLASSIC); /* until the settings are read */
+#ifdef _WIN32
+    drop_look_menu();
+#else
+    (void)drop_look_menu;
+#endif
     A.playing_si = -1;
     snprintf(fonts, sizeof(fonts), "%sfonts%c", assets, assets[strlen(assets) - 1]);
     if (font_init(fonts) != 0) {
@@ -719,6 +767,7 @@ int app_frame(void)
                 A.px_per_point);
     }
 
+    theme_poll();
     player_update();
     player_get_status(&A.st);
     font_poll();
