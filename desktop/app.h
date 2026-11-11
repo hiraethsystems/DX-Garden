@@ -4,6 +4,14 @@
 
 #include <SDL3/SDL.h>
 
+/* 1: the desktop's own title bar and border (Linux). 0: DX Garden draws a
+ * 9x title bar and border itself (Windows). */
+#ifdef _WIN32
+#define DXG_NATIVE_FRAME 0
+#else
+#define DXG_NATIVE_FRAME 1
+#endif
+
 /* `assets` is the folder with fonts/ and stations.txt (ends in a
  * separator); `data` is the user's data folder. Needs a current OpenGL
  * context. Returns 0, or -1 with a message box already shown. */

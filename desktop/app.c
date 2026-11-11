@@ -2,9 +2,11 @@
  * The main window: the Windows 9x frame, menus, toolbar, status bar and the
  * workspace with the Stations, Now Playing and other child windows.
  *
- * The OS window has no system frame; DX Garden draws its own 9x title bar
- * and border, and tells Windows which parts drag and resize (hit testing),
- * so snapping and Aero-style dragging still work.
+ * On Windows the OS window has no system frame; DX Garden draws its own 9x
+ * title bar and border, and tells Windows which parts drag and resize (hit
+ * testing), so snapping and Aero-style dragging still work. On Linux
+ * (DXG_NATIVE_FRAME) the desktop draws the title bar and border, and the
+ * menu bar starts at the top of the window.
  */
 #include "app.h"
 
@@ -536,8 +538,14 @@ int app_init(SDL_Window *win, const char *assets, const char *data)
     snprintf(fonts, sizeof(fonts), "%sfonts%c", assets, assets[strlen(assets) - 1]);
     if (font_init(fonts) != 0) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "DX Garden",
+#ifdef _WIN32
                                  "The fonts are missing. Put the fonts folder from the zip next to "
                                  "dxgarden.exe.",
+#else
+                                 "The fonts are missing: DX Garden looks for them in "
+                                 "share/club.hiraeth.dxgarden/fonts/ next to its bin/ folder. Reinstalling "
+                                 "may help.",
+#endif
                                  win);
         return -1;
     }
@@ -584,7 +592,8 @@ int app_init(SDL_Window *win, const char *assets, const char *data)
     ui_window_show(A.w_player);
     ui_window_show(A.w_globe);
 
-    SDL_SetWindowHitTest(win, hit_test, NULL);
+    if (!DXG_NATIVE_FRAME)
+        SDL_SetWindowHitTest(win, hit_test, NULL);
     if (A.d.report.errors) {
         char msg[200];
         snprintf(msg, sizeof(msg), "%d line%s in your station files %s skipped: see View, "
@@ -699,7 +708,16 @@ int app_frame(void)
     SDL_GetWindowSizeInPixels(A.win, &pw, &ph);
     SDL_GetWindowSize(A.win, &ww, &wh);
     A.px_per_point = ww > 0 ? (float)pw / (float)ww : 1.0f;
-    A.cur_scale = A.scale_setting ? A.scale_setting / 100.0f : auto_scale();
+    {
+        float prev = A.cur_scale;
+        A.cur_scale = A.scale_setting ? A.scale_setting / 100.0f : auto_scale();
+        if (A.cur_scale != prev)
+            LOG("ui: scale %d%% (display %d%%, content %d%%, %.2f pixels per point)",
+                (int)(A.cur_scale * 100.0f + 0.5f),
+                (int)(SDL_GetWindowDisplayScale(A.win) * 100.0f + 0.5f),
+                (int)(SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(A.win)) * 100.0f + 0.5f),
+                A.px_per_point);
+    }
 
     player_update();
     player_get_status(&A.st);
@@ -715,14 +733,26 @@ int app_frame(void)
     ui_begin();
     update_menu_checks();
 
-    b = maximized ? 0 : UI_FRAME;
+    b = (maximized || DXG_NATIVE_FRAME) ? 0 : UI_FRAME;
     A.frame_b = b;
     draw_rect(0, 0, w, h, UI_FACE);
     if (b)
         ui_bevel(0, 0, w, h, BEVEL_WINDOW);
     A.caption_y = b;
     A.title_buttons_x = w - b - 2 - 16 * 3 - 2;
-    {
+    tb = 0;
+    if (DXG_NATIVE_FRAME) {
+        /* The desktop's title bar: "Station - DX Garden". */
+        char t[600];
+        if (A.playing_name[0] && A.st.state != PLAYER_IDLE)
+            snprintf(t, sizeof(t), "%s - DX Garden", A.playing_name);
+        else
+            snprintf(t, sizeof(t), "DX Garden");
+        if (strcmp(t, A.os_title) != 0) {
+            snprintf(A.os_title, sizeof(A.os_title), "%s", t);
+            SDL_SetWindowTitle(A.win, t);
+        }
+    } else {
         /* "Station - DX Garden", as 9x apps named their documents. */
         char t[600];
         if (A.playing_name[0] && A.st.state != PLAYER_IDLE)
@@ -746,7 +776,7 @@ int app_frame(void)
     else if (tb == UI_TB_MAX)
         maximized ? SDL_RestoreWindow(A.win) : SDL_MaximizeWindow(A.win);
 
-    y = b + UI_CAPTION_H + 1;
+    y = DXG_NATIVE_FRAME ? 0 : b + UI_CAPTION_H + 1;
     cmd = ui_menu_bar(b, y, w - 2 * b, menu_labels, menus, 5);
     y += UI_MENU_H + 1;
     if (A.show_toolbar) {
@@ -767,16 +797,28 @@ int app_frame(void)
             /* The globe fills the workspace; Now Playing and Stations
              * float over its right-hand side. Restored, the globe is a
              * window on the left. */
-            int right_w = ws.w * 3 / 10, ph = 250, m = 10;
+            int right_w = ws.w * 3 / 10, ph = 250, m = 10, sh;
             if (right_w < 330)
                 right_w = 330;
             if (right_w > 520)
                 right_w = 520;
+            /* Stations gets at least its minimum height: in a short
+             * window, Now Playing gives way first (down to its own
+             * minimum), then Stations overlaps the bottom of the
+             * workspace rather than being squashed. */
+            sh = ws.h - ph - 6 - 2 * m - 60;
+            if (sh < A.w_stations->min_h) {
+                ph = ws.h - 6 - 2 * m - 60 - A.w_stations->min_h;
+                if (ph < A.w_player->min_h)
+                    ph = A.w_player->min_h;
+                sh = ws.h - ph - 6 - 2 * m - 60;
+                if (sh < A.w_stations->min_h)
+                    sh = A.w_stations->min_h;
+            }
             A.w_globe->r = (rect){ ws.x, ws.y, ws.w - right_w - 2 * m, ws.h };
             A.w_globe->restore = A.w_globe->r;
             A.w_player->r = (rect){ ws.x + ws.w - right_w - m, ws.y + m, right_w, ph };
-            A.w_stations->r = (rect){ ws.x + ws.w - right_w - m, ws.y + m + ph + 6, right_w,
-                                      ws.h - ph - 6 - 2 * m - 60 };
+            A.w_stations->r = (rect){ ws.x + ws.w - right_w - m, ws.y + m + ph + 6, right_w, sh };
             A.placed = 1;
         }
         ui_windows();

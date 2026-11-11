@@ -2,6 +2,7 @@
 #
 #   Windows: cmake -S . -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake
 #   Linux:   cmake -S . -B build-linux -G Ninja -DDXG_DESKTOP=ON
+#            cmake --install build-linux --prefix ~/.local   (optional)
 #
 # Both need tools/build_win_deps.sh run first (win64 or linux).
 set(DXG_LINUX_DEPS "${CMAKE_SOURCE_DIR}/third_party/linux" CACHE PATH "Linux dependency prefix")
@@ -86,6 +87,13 @@ add_custom_command(TARGET dxgarden_desktop POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/assets/stations/stations.txt"
             "$<TARGET_FILE_DIR:dxgarden_desktop>/stations.txt")
+if(NOT WIN32)
+    # The window icon (X11 title bars and task switchers).
+    add_custom_command(TARGET dxgarden_desktop POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/desktop/linux/club.hiraeth.dxgarden.png"
+                "$<TARGET_FILE_DIR:dxgarden_desktop>/icon.png")
+endif()
 # The globe's imagery, built by tools/make_earth.py (not in git: 70 MB).
 if(EXISTS "${CMAKE_SOURCE_DIR}/assets-build/earth-day.pack")
     add_custom_command(TARGET dxgarden_desktop POST_BUILD
@@ -95,4 +103,36 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/assets-build/earth-day.pack")
 else()
     message(WARNING "assets-build/earth-day.pack is missing: run tools/make_earth.py "
                     "for the globe's imagery")
+endif()
+
+# Linux install layout (also the AppImage's): bin/dxgarden, the files it
+# reads in share/club.hiraeth.dxgarden/ (found from bin/), and a
+# menu entry and icon named after the app ID SDL gives Wayland.
+if(NOT WIN32)
+    include(GNUInstallDirs)
+    install(TARGETS dxgarden_desktop RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    # Not share/dxgarden/: with --prefix ~/.local that is the user's data folder.
+    set(DXG_SHARE "${CMAKE_INSTALL_DATADIR}/club.hiraeth.dxgarden")
+    foreach(f ${DXG_DESKTOP_FONTS})
+        install(FILES "${CMAKE_SOURCE_DIR}/assets/fonts/${f}" DESTINATION "${DXG_SHARE}/fonts")
+    endforeach()
+    install(FILES "${CMAKE_SOURCE_DIR}/assets/stations/stations.txt" DESTINATION "${DXG_SHARE}")
+    install(FILES desktop/linux/club.hiraeth.dxgarden.png DESTINATION "${DXG_SHARE}"
+            RENAME icon.png)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/assets-build/earth-day.pack")
+        install(FILES "${CMAKE_SOURCE_DIR}/assets-build/earth-day.pack" DESTINATION "${DXG_SHARE}")
+    endif()
+    # The menu entry runs the program by its full path: desktops don't
+    # always have ~/.local/bin on their PATH (Plasma on Debian doesn't).
+    # Written at install time, so `cmake --install --prefix` is honoured.
+    install(CODE "
+        set(dxg_bin \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/dxgarden\")
+        file(READ \"${CMAKE_SOURCE_DIR}/desktop/linux/club.hiraeth.dxgarden.desktop\" dxg_entry)
+        string(REPLACE \"Exec=dxgarden\" \"Exec=\\\"\${dxg_bin}\\\"\" dxg_entry \"\${dxg_entry}\")
+        set(dxg_out \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/applications/club.hiraeth.dxgarden.desktop\")
+        message(STATUS \"Installing: \${dxg_out}\")
+        file(WRITE \"\${dxg_out}\" \"\${dxg_entry}\")
+    ")
+    install(FILES desktop/linux/club.hiraeth.dxgarden.png
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps")
 endif()

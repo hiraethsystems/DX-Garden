@@ -118,6 +118,39 @@ The portable core has Linux unit tests:
 cmake -S . -B build-test && cmake --build build-test && ./build-test/dxgarden_test
 ```
 
+### Desktop app on Linux (in progress)
+
+A desktop version for Linux is being worked on in the `linux-port` branch.
+It plays the same station list on a globe, and is not finished yet. On
+Debian 13 it needs these packages:
+
+```sh
+sudo apt install cmake ninja-build meson curl libcurl4-openssl-dev libmpg123-dev \
+  libfreetype-dev libharfbuzz-dev libfribidi-dev libx11-dev libxext-dev libxrandr-dev \
+  libxcursor-dev libxi-dev libxss-dev libxfixes-dev libwayland-dev libxkbcommon-dev \
+  wayland-protocols libdecor-0-dev libegl-dev libgl-dev libpipewire-0.3-dev libpulse-dev \
+  libasound2-dev libdbus-1-dev libudev-dev
+```
+
+Then build SDL3, the globe's imagery (a one-off download of NASA's Blue
+Marble, about 70 MB once built; needs Pillow) and the app, and install it
+for your user:
+
+```sh
+tools/build_win_deps.sh linux
+python3 tools/make_earth.py --cache third_party/earth --out assets-build
+cmake -S . -B build-linux -G Ninja -DDXG_DESKTOP=ON && cmake --build build-linux
+cmake --install build-linux --prefix ~/.local
+```
+
+It keeps its settings and station files in `~/.local/share/dxgarden/`;
+the program's own files go in `~/.local/share/club.hiraeth.dxgarden/`,
+so reinstalling never touches your stations or favourites.
+It works on KDE Plasma and GNOME, on Wayland and X11. On KDE Plasma it
+runs through XWayland by default (SDL's choice there); to run it as a
+native Wayland app, start it with `SDL_VIDEO_DRIVER=wayland dxgarden`. If
+the menu entry doesn't show up straight away on KDE, run `kbuildsycoca6`.
+
 ## Building a station list (optional)
 
 `tools/rb_to_stations.py` (Python 3.8+, standard library only) downloads

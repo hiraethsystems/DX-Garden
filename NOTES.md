@@ -1546,3 +1546,84 @@ background (a new `UIW_BACKGROUND` window kind: kept behind the others,
 frameless when maximised), with Now Playing and Stations floating over its
 right side. View, Globe Fills Window turns it back into an ordinary window
 on the left; the choice is saved.
+
+## Linux port, L1: a proper native Linux build (build 37, 2026-11-11)
+
+The Linux port starts from the Windows port (`linux-port` branch, from
+`windows-port`). The desktop app was already SDL3 code that built on Linux
+as a development build; L1 makes that build a real Linux app. The plan is
+for Linux to replace the Windows build eventually; until then both build
+from the same code, and Windows behaves as before.
+
+**Title bar.** On Linux the desktop draws the title bar and border
+(`DXG_NATIVE_FRAME` in `desktop/app.h`): the window isn't borderless, there
+is no hit testing, and the menu bar starts at the top of the window. The
+window title is still "Station - DX Garden". The 9x frame stays on Windows.
+KDE Plasma draws the title bar itself (server-side decorations, checked in
+a Wayland trace: KWin answers mode 2). GNOME on Wayland leaves title bars
+to the app, so SDL3 is built with libdecor, which draws one there.
+
+**KDE Plasma.** Checked on Plasma 6.3.6 (Wayland, screens at 160% and
+100%, NVIDIA). SDL 3.4 runs the app through XWayland here by default
+(SDL picks X11 on compositors without the newer frame-pacing protocols);
+`SDL_VIDEO_DRIVER=wayland` runs it natively, and both work:
+- The app ID / X11 window class is `club.hiraeth.dxgarden`, the same as the
+  menu entry's file name and `StartupWMClass`, so Plasma's task manager
+  groups the window under the menu entry and its icon.
+- Under X11 window sizes are in pixels, so on the 160% screen the window
+  opened at 1024 x 720 pixels, under two thirds of the intended size, and
+  the Stations window came out squashed. The starting size is now scaled
+  by the screen's scale (within 90% of the usable area). The interface
+  scale itself was already right in both (150%, the nearest step to 160%).
+- X11 title bars and Alt+Tab want the icon on the window, so the app sets
+  it (`share/club.hiraeth.dxgarden/icon.png`, loaded with SDL 3.4's PNG loader).
+- The first layout gives Stations at least its minimum height; in a short
+  window Now Playing shrinks first.
+
+**Folders.** Data moved from `~/.local/share/DX Garden/` to
+`$XDG_DATA_HOME/dxgarden/` (normally `~/.local/share/dxgarden/`), matching
+the internal name. On start, an old `DX Garden` folder is renamed to the
+new name if the new one doesn't exist yet, so settings, favourites and
+station files carry over. The app's own files (fonts, bundled
+`stations.txt`, `earth-day.pack`) are found next to the program when
+`fonts/` is there (the build folder), otherwise in `../share/club.hiraeth.dxgarden/`
+from it: an installed copy, and later the AppImage. The first try used
+`share/dxgarden/`, but with `--prefix ~/.local` that is the data folder
+itself, so the install put the bundled list where the user's
+`stations.txt` goes and a reinstall would have overwritten it. Found on
+the first real install, before the app had run; the folder is now named
+after the app ID so the two can't meet.
+
+**Install.** `cmake --install build-linux --prefix ~/.local` puts in
+`bin/dxgarden`, `share/club.hiraeth.dxgarden/`, a menu entry and a 128 px icon, both
+named after the app ID SDL gives the desktop (`club.hiraeth.dxgarden`), so
+the window and its menu entry match. The installed menu entry runs the
+program by its full path (written at install time): Plasma on Debian
+doesn't have `~/.local/bin` on its PATH, and the first real install failed
+to launch with "Could not find the program 'dxgarden'". The icon is the Vita bubble
+(`art/livearea/icon0.png`) cropped to a circle, in `desktop/linux/`.
+
+**Libraries.** SDL3 3.4.18 is still built from source
+(`tools/build_win_deps.sh linux`), so Linux and Windows use the same SDL;
+Debian 13 only has 3.2.10. curl, mpg123, FreeType, HarfBuzz and FriBidi
+come from the distribution's `-dev` packages. The AppImage (L3) will bundle
+them.
+
+**Checked here** (Debian 13, KDE Plasma 6.3.6 on Wayland, NVIDIA RTX
+4060): the build and the 4538 core checks pass; an install into a test
+prefix starts with assets from `share/club.hiraeth.dxgarden/`; an old `DX Garden` folder
+with a favourite in it was moved and the favourite loaded; screenshots
+under X11 (the default) and native Wayland show the menu bar at the top, no
+9x title bar, and the same layout at 150%; the X11 window has its class and
+icon; Deutschlandfunk (HTTPS MP3) played through PipeWire.
+
+**Not checked:** the title bar itself (screenshots only show the window's
+contents), the menu entry in Plasma's launcher after a real install, GNOME
+(no GNOME machine here), and the Windows build (its libraries aren't built
+on this machine yet). The interface still has the 9x look; that's L2.
+
+**Known issues**
+
+- `config.ini` gets a second `[ui]` header when a key is added to a section
+  after another section was written (the file reads back correctly). In
+  `core/config.c`; harmless, to tidy later.

@@ -54,12 +54,71 @@ static const char *state_name(player_state s)
     return "?";
 }
 
-/* The data folder: %APPDATA%\DX Garden\ on Windows,
- * ~/.local/share/DX Garden/ on Linux. Always ends in a separator. */
+#ifndef _WIN32
+/* Builds before 37 kept Linux data in ~/.local/share/DX Garden/. Moves it
+ * to ~/.local/share/dxgarden/ once, if the new folder doesn't exist yet. */
+static void move_old_data_dir(void)
+{
+    const char *xdg = SDL_getenv("XDG_DATA_HOME"), *home = SDL_getenv("HOME");
+    char root[1024], old_dir[1100], new_dir[1100];
+    SDL_PathInfo info;
+
+    if (xdg && xdg[0])
+        snprintf(root, sizeof(root), "%s", xdg);
+    else if (home && home[0])
+        snprintf(root, sizeof(root), "%s/.local/share", home);
+    else
+        return;
+    snprintf(old_dir, sizeof(old_dir), "%s/DX Garden", root);
+    snprintf(new_dir, sizeof(new_dir), "%s/dxgarden", root);
+    if (SDL_GetPathInfo(old_dir, &info) && info.type == SDL_PATHTYPE_DIRECTORY &&
+        !SDL_GetPathInfo(new_dir, NULL)) {
+        if (rename(old_dir, new_dir) == 0)
+            fprintf(stderr, "moved %s to %s\n", old_dir, new_dir);
+        else
+            fprintf(stderr, "could not move %s to %s\n", old_dir, new_dir);
+    }
+}
+#endif
+
+/* The data folder: %APPDATA%\DX Garden\ on Windows, $XDG_DATA_HOME/dxgarden/
+ * (~/.local/share/dxgarden/) on Linux. Always ends in a separator. */
 static char *data_dir(void)
 {
+#ifdef _WIN32
     char *d = SDL_GetPrefPath(NULL, "DX Garden");
+#else
+    char *d;
+    move_old_data_dir();
+    d = SDL_GetPrefPath(NULL, "dxgarden");
+#endif
     return d ? d : SDL_strdup("./");
+}
+
+/* The folder with fonts/, stations.txt and earth-day.pack; ends in a
+ * separator. Windows: next to the program. Linux: next to the program when
+ * fonts/ is there (the build folder), otherwise
+ * ../share/club.hiraeth.dxgarden/ from it, named after the app ID because
+ * share/dxgarden/ under ~/.local is the data folder
+ * (an installed copy, or the AppImage). */
+static char *assets_dir(void)
+{
+    const char *base = SDL_GetBasePath();
+    char *d;
+    if (!base)
+        return SDL_strdup("./");
+#ifndef _WIN32
+    {
+        char probe[1100];
+        snprintf(probe, sizeof(probe), "%sfonts", base);
+        if (!SDL_GetPathInfo(probe, NULL)) {
+            SDL_asprintf(&d, "%s../share/club.hiraeth.dxgarden/", base);
+            return d;
+        }
+    }
+#endif
+    d = SDL_strdup(base);
+    return d;
 }
 
 static void open_log(const char *dir)
@@ -294,23 +353,63 @@ static int run_window(const char *data, const char *shot, int frames, int start_
     SDL_Window *win;
     SDL_GLContext gl;
     const char *missing = NULL;
-    const char *base = SDL_GetBasePath();
+    char *assets = assets_dir();
     int frame = 0;
+    SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
+                            SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
+    if (!DXG_NATIVE_FRAME)
+        flags |= SDL_WINDOW_BORDERLESS;
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    win = SDL_CreateWindow("DX Garden", start_w, start_h,
-                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS |
-                               SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
+    win = SDL_CreateWindow("DX Garden", start_w, start_h, flags);
     if (!win) {
         LOG("video: %s", SDL_GetError());
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "DX Garden", SDL_GetError(), NULL);
         return 1;
     }
     SDL_SetWindowMinimumSize(win, 480, 360);
+#ifndef _WIN32
+    {
+        /* Under X11 (SDL's choice on some Wayland desktops, KDE Plasma
+         * among them, which then runs it through XWayland), window sizes
+         * are in pixels: on a 160% screen 1024 x 720 would open at under
+         * two thirds of the intended size. Scale the starting size by the
+         * screen's scale, within the usable area. */
+        int pw, ph, ww, wh;
+        float s = SDL_GetWindowDisplayScale(win);
+        SDL_Rect usable;
+        SDL_GetWindowSizeInPixels(win, &pw, &ph);
+        SDL_GetWindowSize(win, &ww, &wh);
+        if (ww > 0 && pw == ww && s > 1.05f) {
+            int w = (int)(start_w * s), h = (int)(start_h * s);
+            if (SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(win), &usable)) {
+                if (w > usable.w * 9 / 10)
+                    w = usable.w * 9 / 10;
+                if (h > usable.h * 9 / 10)
+                    h = usable.h * 9 / 10;
+            }
+            SDL_SetWindowSize(win, w, h);
+            SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        }
+    }
+    {
+        /* The window's icon. Wayland desktops take it from the menu entry
+         * (by app ID), but X11 title bars and task switchers want it on
+         * the window. */
+        char path[1100];
+        SDL_Surface *icon;
+        snprintf(path, sizeof(path), "%sicon.png", assets);
+        icon = SDL_LoadPNG(path);
+        if (icon) {
+            SDL_SetWindowIcon(win, icon);
+            SDL_DestroySurface(icon);
+        }
+    }
+#endif
     gl = SDL_GL_CreateContext(win);
     if (!gl || gl_load(&missing) != 0) {
         char msg[512];
@@ -323,8 +422,12 @@ static int run_window(const char *data, const char *shot, int frames, int start_
         return 1;
     }
     SDL_GL_SetSwapInterval(1);
-    if (app_init(win, base ? base : "./", data) != 0)
+    LOG("assets in %s", assets);
+    if (app_init(win, assets, data) != 0) {
+        SDL_free(assets);
         return 1;
+    }
+    SDL_free(assets);
     SDL_ShowWindow(win);
 
     for (;;) {

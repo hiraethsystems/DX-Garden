@@ -1,5 +1,5 @@
 /* Files and folders in the data folder (%APPDATA%\DX Garden\ on Windows,
- * ~/.local/share/DX Garden/ on Linux). */
+ * ~/.local/share/dxgarden/ on Linux). */
 #ifndef DXG_FS_H
 #define DXG_FS_H
 
