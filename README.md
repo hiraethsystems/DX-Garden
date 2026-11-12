@@ -118,6 +118,24 @@ The portable core has Linux unit tests:
 cmake -S . -B build-test && cmake --build build-test && ./build-test/dxgarden_test
 ```
 
+### Desktop app on Linux: the AppImage
+
+`tools/make_appimage.sh` builds `dist/dxgarden-<version>-b<build>-x86_64.AppImage`,
+one file that runs on most Linux distributions from 2024 on (it needs glibc
+2.38 or later: Ubuntu 24.04+, Fedora 39+, Debian 13+, Arch, openSUSE
+Tumbleweed). It needs the libraries below built first:
+
+```sh
+tools/build_win_deps.sh linux
+tools/build_win_deps.sh linux-static
+python3 tools/make_earth.py --cache third_party/earth --out assets-build
+tools/make_appimage.sh
+```
+
+To run it, make it executable (`chmod +x`) and start it. If the system has no
+FUSE, start it with `--appimage-extract-and-run`. Settings and station
+files go in `~/.local/share/dxgarden/`, as with an installed copy.
+
 ### Desktop app on Linux (in progress)
 
 A desktop version for Linux is being worked on in the `linux-port` branch.

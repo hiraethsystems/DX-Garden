@@ -1684,3 +1684,57 @@ GNOME itself, and changing the KDE scheme while the app runs.
   16 px rows), and the interface is still drawn small and scaled up, so at
   150% it is slightly soft. That's L2b: drawing at the screen's resolution
   and Breeze-like spacing.
+
+## Linux port, L3: the AppImage (build 39, 2026-11-11)
+
+`tools/make_appimage.sh` builds `dist/dxgarden-<version>-b<build>-x86_64.AppImage`
+(`--release`: without the build number), about 81 MB, almost all of it the
+globe's imagery. One file: make it executable and run it.
+
+**Static libraries.** Debian's libcurl pulls in about 40 libraries
+(Kerberos, LDAP, RTMP, GnuTLS, libidn2 and more) and has Debian's
+certificate path built in, so copying it into the image would be heavy and
+would break HTTPS on Fedora. Instead `tools/build_win_deps.sh linux-static`
+builds, into `third_party/linux-static/`, the same versions the Windows
+build uses: curl 8.23.0 (HTTP and HTTPS only), mpg123 1.33.7, FreeType
+2.15.0, HarfBuzz 15.0.0 and FriBidi 1.0.18, plus mbedTLS 3.6.7 (the LTS
+branch; the Vita build also uses mbedTLS) for curl's TLS. With
+`-DDXG_STATIC_DEPS=ON` the program links these and the C++ runtime
+statically, and needs only `libc` and `libm`; SDL loads the desktop's
+graphics, sound and input libraries itself when it starts. The development
+build keeps using the distribution's packages.
+
+**Certificates.** The static curl has no certificate path built in. At
+start the player looks for the system's bundle: `$SSL_CERT_FILE`, then
+curl's own path if it has one (a distribution's curl), then the usual
+places (Debian/Ubuntu/Arch, Fedora/RHEL, openSUSE, Alpine), and as a last
+resort `/etc/ssl/certs/`. The log says which.
+
+**glibc.** Built on Debian 13, the program needs glibc 2.38 or later: Ubuntu
+24.04+, Fedora 39+, Debian 13+, current Arch and openSUSE Tumbleweed, but
+not Ubuntu 22.04, Debian 12 or Mint 21 (my decision, 2026-11-11: build on
+this machine rather than in an older container). The newer symbols come
+from glibc 2.38's headers (C23 `strtol`/`sscanf`, `strlcpy`, `fmod`), in
+our code and the libraries alike, so lowering the floor means building on
+an older system.
+
+**Tools.** appimagetool 1.9.1 and the AppImage runtime (type2-runtime
+20251108) are downloaded once into `third_party/appimage/`, at those fixed
+versions, and checked against the SHA-256 sums GitHub publishes for them.
+appimagetool runs extracted, so packing needs no FUSE. The image's menu
+entry runs `dxgarden` from inside the image; its files are in
+`usr/share/club.hiraeth.dxgarden/`, found the same way as an installed
+copy's.
+
+**Checked here** (Debian 13, KDE Plasma 6.3.6): the static program links
+only `libc` and `libm`; the AppImage plays Deutschlandfunk over HTTPS with
+its own curl and mbedTLS (certificates from Debian's bundle); with an empty
+`SSL_CERT_FILE` HTTPS is refused ("Can't check secure servers: no
+certificate store"), so verification is on; run with a bare environment, as
+a launcher starts it, it found its files inside the image, opened the
+window with OpenGL on the NVIDIA driver, and loaded the globe imagery.
+
+**Not checked:** other distributions (no containers or VMs here), so the
+certificate paths for Fedora and openSUSE are untested; a machine without
+FUSE (the image needs `fusermount3` to mount itself; otherwise run it with
+`--appimage-extract-and-run`).

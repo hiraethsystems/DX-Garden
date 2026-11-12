@@ -3,10 +3,15 @@
 #   Windows: cmake -S . -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake
 #   Linux:   cmake -S . -B build-linux -G Ninja -DDXG_DESKTOP=ON
 #            cmake --install build-linux --prefix ~/.local   (optional)
+#   AppImage: tools/make_appimage.sh (a Linux build with -DDXG_STATIC_DEPS=ON)
 #
-# Both need tools/build_win_deps.sh run first (win64 or linux).
+# Both need tools/build_win_deps.sh run first (win64 or linux; the
+# AppImage also linux-static).
 set(DXG_LINUX_DEPS "${CMAKE_SOURCE_DIR}/third_party/linux" CACHE PATH "Linux dependency prefix")
+set(DXG_LINUX_STATIC_DEPS "${CMAKE_SOURCE_DIR}/third_party/linux-static" CACHE PATH
+    "Linux static dependency prefix (DXG_STATIC_DEPS)")
 if(NOT WIN32)
+    option(DXG_STATIC_DEPS "Link curl, mpg123 and the text libraries statically (the AppImage)" OFF)
     list(PREPEND CMAKE_PREFIX_PATH "${DXG_LINUX_DEPS}")
 endif()
 
@@ -26,6 +31,23 @@ if(WIN32)
     set(DXG_TEXT_INCLUDES "${DXG_WIN_DEPS}/include/freetype2" "${DXG_WIN_DEPS}/include/harfbuzz"
         "${DXG_WIN_DEPS}/include/fribidi")
     set(DXG_PLATFORM_NAME "Windows")
+elseif(DXG_STATIC_DEPS)
+    # Everything from third_party/linux-static/, so the program needs only
+    # glibc and what SDL loads at run time.
+    set(dxg_l "${DXG_LINUX_STATIC_DEPS}/lib")
+    foreach(lib curl mbedtls mbedx509 mbedcrypto everest p256m mpg123 freetype harfbuzz fribidi)
+        if(NOT EXISTS "${dxg_l}/lib${lib}.a")
+            message(FATAL_ERROR "${dxg_l}/lib${lib}.a is missing: run tools/build_win_deps.sh linux-static")
+        endif()
+    endforeach()
+    set(DXG_CURL "${dxg_l}/libcurl.a" "${dxg_l}/libmbedtls.a" "${dxg_l}/libmbedx509.a"
+        "${dxg_l}/libmbedcrypto.a" "${dxg_l}/libeverest.a" "${dxg_l}/libp256m.a" pthread)
+    set(DXG_MPG123 "${dxg_l}/libmpg123.a")
+    set(DXG_TEXT "${dxg_l}/libharfbuzz.a" "${dxg_l}/libfreetype.a" "${dxg_l}/libfribidi.a")
+    set(DXG_TEXT_INCLUDES "${DXG_LINUX_STATIC_DEPS}/include"
+        "${DXG_LINUX_STATIC_DEPS}/include/freetype2" "${DXG_LINUX_STATIC_DEPS}/include/harfbuzz"
+        "${DXG_LINUX_STATIC_DEPS}/include/fribidi")
+    set(DXG_PLATFORM_NAME "Linux")
 else()
     pkg_check_modules(DXG_PC REQUIRED IMPORTED_TARGET libcurl libmpg123)
     pkg_check_modules(DXG_TEXT_PC REQUIRED IMPORTED_TARGET freetype2 harfbuzz fribidi)
@@ -63,6 +85,15 @@ target_compile_definitions(dxgarden_desktop PRIVATE DXG_VERSION="${DXG_VERSION}"
 target_compile_options(dxgarden_desktop PRIVATE -Wall -Wextra -O2 -g)
 target_link_libraries(dxgarden_desktop PRIVATE SDL3::SDL3-static ${DXG_CURL} ${DXG_MPG123}
                       ${DXG_TEXT} m)
+if(DXG_STATIC_DEPS AND NOT WIN32)
+    # HarfBuzz is C++: its runtime goes in too, so the program doesn't need
+    # this machine's libstdc++.
+    target_compile_definitions(dxgarden_desktop PRIVATE CURL_STATICLIB FRIBIDI_LIB_STATIC
+                               DXG_STATIC_DEPS)
+    target_link_options(dxgarden_desktop PRIVATE -static-libstdc++ -static-libgcc)
+    set_target_properties(dxgarden_desktop PROPERTIES LINKER_LANGUAGE CXX)
+    enable_language(CXX)
+endif()
 if(WIN32)
     target_compile_definitions(dxgarden_desktop PRIVATE CURL_STATICLIB WIN32_LEAN_AND_MEAN
                                FRIBIDI_LIB_STATIC)

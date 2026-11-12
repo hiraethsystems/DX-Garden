@@ -79,6 +79,8 @@ typedef struct {
 } player;
 
 static player P;
+static char ca_file[512]; /* trusted certificates for curl (find_ca_bundle) */
+static int ca_dir;        /* no bundle file found: use /etc/ssl/certs */
 
 static void lock(void)
 {
@@ -305,6 +307,10 @@ static outcome fetch_once(CURL *c, char *msg, size_t mn, char *next, size_t nn)
     unlock();
 
     curl_easy_setopt(c, CURLOPT_URL, P.cur_url);
+    if (ca_file[0])
+        curl_easy_setopt(c, CURLOPT_CAINFO, ca_file);
+    else if (ca_dir)
+        curl_easy_setopt(c, CURLOPT_CAPATH, "/etc/ssl/certs");
     curl_easy_setopt(c, CURLOPT_USERAGENT, USER_AGENT);
     curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
     curl_easy_setopt(c, CURLOPT_ERRORBUFFER, errbuf);
@@ -420,6 +426,45 @@ static int wait_or_stop(unsigned ms)
         waited += 100;
     }
     return 1;
+}
+
+/* Where curl finds trusted certificates. Windows: Schannel uses the
+ * system store. Linux: a distribution's own libcurl knows its bundle; the
+ * AppImage's static one has none built in (each distribution keeps it
+ * somewhere else), so look for it once: $SSL_CERT_FILE, then the usual
+ * places. */
+static void find_ca_bundle(void)
+{
+#ifndef _WIN32
+    static const char *const FILES[] = {
+        "/etc/ssl/certs/ca-certificates.crt",                /* Debian, Ubuntu, Arch, Gentoo */
+        "/etc/pki/tls/certs/ca-bundle.crt",                  /* Fedora, RHEL */
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", /* RHEL, CentOS */
+        "/var/lib/ca-certificates/ca-bundle.pem",            /* openSUSE */
+        "/etc/ssl/ca-bundle.pem",                            /* older openSUSE */
+        "/etc/ssl/cert.pem",                                 /* Alpine, Void */
+        "/etc/pki/tls/cacert.pem",
+    };
+    const curl_version_info_data *v = curl_version_info(CURLVERSION_NOW);
+    const char *env = SDL_getenv("SSL_CERT_FILE");
+    size_t i;
+    if (env && env[0] && SDL_GetPathInfo(env, NULL)) {
+        snprintf(ca_file, sizeof(ca_file), "%s", env);
+    } else if (v && v->cainfo && SDL_GetPathInfo(v->cainfo, NULL)) {
+        LOG("net: certificates from %s (curl's own)", v->cainfo);
+        return;
+    } else {
+        for (i = 0; i < sizeof(FILES) / sizeof(FILES[0]) && !ca_file[0]; i++)
+            if (SDL_GetPathInfo(FILES[i], NULL))
+                snprintf(ca_file, sizeof(ca_file), "%s", FILES[i]);
+    }
+    if (ca_file[0]) {
+        LOG("net: certificates from %s", ca_file);
+    } else {
+        ca_dir = 1;
+        LOG("net: no certificate bundle found; trying /etc/ssl/certs");
+    }
+#endif
 }
 
 static int SDLCALL net_thread(void *argp)
@@ -722,6 +767,7 @@ int player_init(size_t ring_capacity)
     }
     LOG("player: ring %u KB, %s", (unsigned)(ring_capacity / 1024),
         curl_version());
+    find_ca_bundle();
     return 0;
 }
 
