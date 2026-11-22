@@ -8,15 +8,17 @@
 
 #include <SDL3/SDL.h>
 #include <curl/curl.h>
-#include <mpg123.h>
 
+#include "decode.h"
+#include "hls.h"
 #include "icy.h"
 #include "log.h"
+#include "media_demux.h"
 #include "stream_buffer.h"
 #include "stream_info.h"
+#include "track_info.h"
 
 #define GRAIN 1024        /* samples per push to the audio stream */
-#define READ_CHUNK 4096   /* compressed bytes per decoder read */
 #define USER_AGENT "DXGarden/" DXG_VERSION " (" DXG_PLATFORM_NAME ")"
 /* Decoded audio queued ahead of the device. SDL pulls from this on its own
  * thread; more than this and the decoder waits, which keeps the stream
@@ -47,6 +49,7 @@ typedef struct {
     char url[512];
     char pending_url[512];
     size_t pending_prebuffer;
+    size_t base_prebuffer; /* the setting, for 128 kbps; scaled for faster streams */
 
     CURL *curl;
     int connected;     /* this connection has sent a reply */
@@ -54,7 +57,9 @@ typedef struct {
     char content_type[64];
     char icy_name[96];
     char cur_url[512]; /* what is being fetched (a playlist's target, say) */
-    char title[ICY_TITLE_MAX]; /* now playing, from ICY metadata */
+    char title[ICY_TITLE_MAX]; /* now playing, as the stream gives it */
+    char artist[128], song[ICY_TITLE_MAX]; /* split, or "" and the whole title */
+    char icy_url[256];         /* the station's website, from icy-url */
     int reconnecting;  /* attempt number while reconnecting, else 0 */
     uint64_t retry_at; /* SDL_GetTicksNS() */
     char reconnect_why[128];
@@ -67,11 +72,12 @@ typedef struct {
     size_t pl_len;
     uint64_t conn_bytes;
 
+    codec_id codec_hint; /* from the Content-Type; the bytes may overrule it */
+    int hls;             /* playing an HLS stream */
+    char codec[32];      /* what the decoder found: "MP3", "HE-AAC", ... */
     long rate;
     int channels;
     int bitrate_kbps;
-    int mpeg_version;
-    int layer;
     uint64_t decode_us;
     uint64_t samples_out;
 
@@ -109,7 +115,7 @@ static void set_error(const char *fmt, ...)
 
 /* ---- network thread ---------------------------------------------------- */
 
-enum { MODE_UNDECIDED, MODE_AUDIO, MODE_PLAYLIST, MODE_REFUSED };
+enum { MODE_UNDECIDED, MODE_AUDIO, MODE_PLAYLIST, MODE_HLS, MODE_REFUSED };
 
 static icy_demux icy;                       /* network thread only */
 static unsigned char demux_out[16 * 1024];
@@ -142,6 +148,13 @@ static size_t on_header(char *buf, size_t size, size_t nmemb, void *ud)
         header_value(buf + 9, len - 9, val, sizeof(val));
         lock();
         snprintf(P.icy_name, sizeof(P.icy_name), "%s", val);
+        unlock();
+    } else if (len > 8 && strncasecmp(buf, "icy-url:", 8) == 0) {
+        char u[256];
+        header_value(buf + 8, len - 8, u, sizeof(u));
+        lock();
+        if (strncasecmp(u, "http://", 7) == 0 || strncasecmp(u, "https://", 8) == 0)
+            snprintf(P.icy_url, sizeof(P.icy_url), "%s", u);
         unlock();
     } else if (len > 12 && strncasecmp(buf, "icy-metaint:", 12) == 0) {
         long m;
@@ -180,6 +193,17 @@ static void first_data(const unsigned char *buf, size_t n)
         LOG("redirected to %s", eff);
 
     kind = stream_classify(P.content_type, eff ? eff : P.cur_url, buf, n, format, sizeof(format));
+    if (kind == SK_OTHER) {
+        /* Formats the decoders take; anything else is refused below. */
+        if (strcmp(format, "AAC") == 0)
+            P.codec_hint = CODEC_AAC, kind = SK_MP3;
+        else if (strcmp(format, "Ogg") == 0 || strcmp(format, "Opus") == 0)
+            P.codec_hint = CODEC_OGG, kind = SK_MP3;
+        else if (strcmp(format, "FLAC") == 0)
+            P.codec_hint = CODEC_FLAC, kind = SK_MP3;
+    } else if (kind == SK_MP3 || kind == SK_UNKNOWN) {
+        P.codec_hint = CODEC_MP3;
+    }
     switch (kind) {
     case SK_MP3:
     case SK_UNKNOWN:
@@ -192,14 +216,13 @@ static void first_data(const unsigned char *buf, size_t n)
         LOG("net: the address is a playlist, reading it");
         break;
     case SK_HLS:
-        P.mode = MODE_REFUSED;
-        snprintf(P.fatal, sizeof(P.fatal),
-                 "This station uses HLS (segmented streaming), which DX Garden doesn't play");
+        P.mode = MODE_HLS;
+        LOG("net: the address is an HLS playlist");
         break;
     case SK_OTHER:
         P.mode = MODE_REFUSED;
         snprintf(P.fatal, sizeof(P.fatal),
-                 "This station streams %s; DX Garden only plays MP3", format);
+                 "This station streams %s, which DX Garden doesn't play", format);
         break;
     case SK_HTML:
         P.mode = MODE_REFUSED;
@@ -224,6 +247,41 @@ static int push_audio(const unsigned char *a, size_t n)
     return !P.stop;
 }
 
+/* What's playing, from any source (ICY, Ogg/FLAC comments, HLS ID3 tags).
+ * `artist` may be ""; then `title` is split if it reads "Artist - Title".
+ * Lock held. */
+static void set_track(const char *artist, const char *title)
+{
+    char a[sizeof(P.artist)], t[sizeof(P.song)], whole[sizeof(P.artist) + sizeof(P.song) + 4];
+    if (artist[0]) {
+        snprintf(a, sizeof(a), "%s", artist);
+        snprintf(t, sizeof(t), "%s", title);
+    } else {
+        title_split(title, a, sizeof(a), t, sizeof(t));
+    }
+    if (a[0] && t[0])
+        snprintf(whole, sizeof(whole), "%s - %s", a, t);
+    else
+        snprintf(whole, sizeof(whole), "%s", a[0] ? a : t);
+    if (strncmp(whole, P.title, sizeof(P.title) - 1) == 0 && strcmp(a, P.artist) == 0)
+        return;
+    {
+        /* Cut to fit without splitting a UTF-8 character. */
+        size_t k = strlen(whole);
+        if (k >= sizeof(P.title)) {
+            k = sizeof(P.title) - 1;
+            while (k && ((unsigned char)whole[k] & 0xC0) == 0x80)
+                k--;
+        }
+        memcpy(P.title, whole, k);
+        P.title[k] = '\0';
+    }
+    memcpy(P.artist, a, sizeof(P.artist));
+    memcpy(P.song, t, sizeof(P.song));
+    LOG("title: %s%s%s%s", whole[0] ? whole : "(none)", a[0] ? " [artist: " : "", a,
+        a[0] ? "]" : "");
+}
+
 static size_t on_data(char *buf, size_t size, size_t nmemb, void *ud)
 {
     size_t total = size * nmemb, off = 0;
@@ -235,7 +293,7 @@ static size_t on_data(char *buf, size_t size, size_t nmemb, void *ud)
         first_data((const unsigned char *)buf, total);
     P.conn_bytes += total;
 
-    if (P.mode == MODE_PLAYLIST) {
+    if (P.mode == MODE_PLAYLIST || P.mode == MODE_HLS) {
         if (P.pl_len + total > PLAYLIST_MAX) {
             snprintf(P.fatal, sizeof(P.fatal), "The playlist is too large to read");
             ok = 0;
@@ -258,8 +316,7 @@ static size_t on_data(char *buf, size_t size, size_t nmemb, void *ud)
             off += chunk;
             if (icy.title_changed) {
                 icy.title_changed = 0;
-                memcpy(P.title, icy.title, sizeof(P.title));
-                LOG("title: %s", P.title[0] ? P.title : "(none)");
+                set_track("", icy.title);
             }
             ok = push_audio(demux_out, a);
         }
@@ -283,7 +340,92 @@ static int on_progress(void *ud, curl_off_t dt, curl_off_t dn, curl_off_t ut,
     return stopped;
 }
 
-typedef enum { OUT_STOPPED, OUT_PLAYLIST, OUT_DROPPED, OUT_FATAL } outcome;
+typedef enum { OUT_STOPPED, OUT_PLAYLIST, OUT_HLS, OUT_DROPPED, OUT_FATAL } outcome;
+
+/* The playlist body of an OUT_HLS, for hls_play (network thread only). */
+static char *hls_body;
+static size_t hls_body_len;
+
+/* What every request shares: certificates, user agent, timeouts. */
+static void net_setup(CURL *c, const char *url)
+{
+    curl_easy_setopt(c, CURLOPT_URL, url);
+    if (ca_file[0])
+        curl_easy_setopt(c, CURLOPT_CAINFO, ca_file);
+    else if (ca_dir)
+        curl_easy_setopt(c, CURLOPT_CAPATH, "/etc/ssl/certs");
+    curl_easy_setopt(c, CURLOPT_USERAGENT, USER_AGENT);
+    curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+#ifdef _WIN32
+    /* Schannel checks against the Windows certificate store; revocation
+     * checks fail behind some proxies and on stations with private CAs. */
+    curl_easy_setopt(c, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NO_REVOKE);
+#endif
+    curl_easy_setopt(c, CURLOPT_HTTP_VERSION, (long)CURL_HTTP_VERSION_1_1);
+    curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(c, CURLOPT_FAILONERROR, 1L);
+    curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 15L);
+    curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, STALL_BYTES_PER_S);
+    curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, STALL_S);
+    curl_easy_setopt(c, CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, on_progress);
+    curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
+}
+
+/* A failed request in plain words, and whether to retry. */
+static outcome describe_failure(CURLcode rc, long code, int connected, const char *errbuf,
+                                char *msg, size_t mn)
+{
+    outcome out = OUT_DROPPED;
+    if (rc == CURLE_HTTP_RETURNED_ERROR) {
+        http_status_message(code, msg, mn);
+        return http_status_retry(code) ? OUT_DROPPED : OUT_FATAL;
+    }
+    switch (rc) {
+    case CURLE_OK:
+        snprintf(msg, mn, "The server ended the stream");
+        break;
+    case CURLE_COULDNT_RESOLVE_HOST:
+        snprintf(msg, mn, "Server not found (DNS): check the network and the address");
+        break;
+    case CURLE_COULDNT_CONNECT:
+        snprintf(msg, mn, "Couldn't connect to the server");
+        break;
+    case CURLE_OPERATION_TIMEDOUT:
+        snprintf(msg, mn, connected ? "The stream stalled (under 1 KB/s for 10 s)"
+                                    : "No answer from the server");
+        break;
+    case CURLE_RECV_ERROR:
+    case CURLE_SEND_ERROR:
+    case CURLE_PARTIAL_FILE:
+    case CURLE_GOT_NOTHING:
+        snprintf(msg, mn, "The connection dropped");
+        break;
+    case CURLE_PEER_FAILED_VERIFICATION:
+        snprintf(msg, mn, "The server's security certificate isn't valid");
+        out = OUT_FATAL;
+        break;
+    case CURLE_SSL_CACERT_BADFILE:
+        snprintf(msg, mn, "Can't check secure servers: no certificate store");
+        out = OUT_FATAL;
+        break;
+    case CURLE_TOO_MANY_REDIRECTS:
+        snprintf(msg, mn, "Too many redirects");
+        out = OUT_FATAL;
+        break;
+    case CURLE_UNSUPPORTED_PROTOCOL:
+    case CURLE_URL_MALFORMAT:
+        snprintf(msg, mn, "The stream address isn't valid");
+        out = OUT_FATAL;
+        break;
+    default:
+        snprintf(msg, mn, "%s%s%s", curl_easy_strerror(rc), errbuf && errbuf[0] ? ": " : "",
+                 errbuf ? errbuf : "");
+        break;
+    }
+    return out;
+}
 
 /* One request for P.cur_url. Puts a message in `msg` for DROPPED/FATAL and
  * the next URL in `next` for PLAYLIST. */
@@ -306,38 +448,24 @@ static outcome fetch_once(CURL *c, char *msg, size_t mn, char *next, size_t nn)
     P.pl_len = 0;
     unlock();
 
-    curl_easy_setopt(c, CURLOPT_URL, P.cur_url);
-    if (ca_file[0])
-        curl_easy_setopt(c, CURLOPT_CAINFO, ca_file);
-    else if (ca_dir)
-        curl_easy_setopt(c, CURLOPT_CAPATH, "/etc/ssl/certs");
-    curl_easy_setopt(c, CURLOPT_USERAGENT, USER_AGENT);
+    net_setup(c, P.cur_url);
     curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
     curl_easy_setopt(c, CURLOPT_ERRORBUFFER, errbuf);
-    curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
-#ifdef _WIN32
-    /* Schannel checks against the Windows certificate store; revocation
-     * checks fail behind some proxies and on stations with private CAs. */
-    curl_easy_setopt(c, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NO_REVOKE);
-#endif
-    curl_easy_setopt(c, CURLOPT_HTTP_VERSION, (long)CURL_HTTP_VERSION_1_1);
-    curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
-    curl_easy_setopt(c, CURLOPT_FAILONERROR, 1L);
-    curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 15L);
-    curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, STALL_BYTES_PER_S);
-    curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, STALL_S);
-    curl_easy_setopt(c, CURLOPT_TCP_KEEPALIVE, 1L);
     curl_easy_setopt(c, CURLOPT_HEADERFUNCTION, on_header);
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, on_data);
-    curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, on_progress);
-    curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
 
     LOG("net: GET %s", P.cur_url);
     rc = curl_easy_perform(c);
     curl_easy_setopt(c, CURLOPT_HTTPHEADER, NULL);
+    curl_easy_setopt(c, CURLOPT_ERRORBUFFER, NULL);
     curl_slist_free_all(hdrs);
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
+    {
+        /* Where it ended up: relative segment addresses resolve from it. */
+        char *eff = NULL;
+        curl_easy_getinfo(c, CURLINFO_EFFECTIVE_URL, &eff);
+        snprintf(next, nn, "%s", eff ? eff : P.cur_url);
+    }
     LOG("net: finished, curl code %d, %llu bytes", (int)rc, (unsigned long long)P.conn_bytes);
 
     lock();
@@ -347,62 +475,36 @@ static outcome fetch_once(CURL *c, char *msg, size_t mn, char *next, size_t nn)
     } else if (P.fatal[0]) {
         snprintf(msg, mn, "%s", P.fatal);
         out = OUT_FATAL;
+    } else if (P.mode == MODE_HLS && rc == CURLE_OK && P.plbuf) {
+        /* Handed to hls_play; `next` already has the playlist's address. */
+        free(hls_body);
+        hls_body = P.plbuf;
+        hls_body_len = P.pl_len;
+        hls_body[hls_body_len] = '\0';
+        P.plbuf = NULL;
+        out = OUT_HLS;
     } else if (P.mode == MODE_PLAYLIST && rc == CURLE_OK) {
-        int r = P.plbuf ? (P.plbuf[P.pl_len] = '\0', playlist_first_url(P.plbuf, P.pl_len, next, nn))
-                        : 0;
+        char eff[512];
+        int r;
+        snprintf(eff, sizeof(eff), "%s", next);
+        r = P.plbuf ? (P.plbuf[P.pl_len] = '\0', playlist_first_url(P.plbuf, P.pl_len, next, nn))
+                    : 0;
         if (r == 1) {
             out = OUT_PLAYLIST;
+        } else if (r < 0) {
+            /* An HLS playlist after all (served as a plain one). */
+            snprintf(next, nn, "%s", eff);
+            free(hls_body);
+            hls_body = P.plbuf;
+            hls_body_len = P.pl_len;
+            P.plbuf = NULL;
+            out = OUT_HLS;
         } else {
-            snprintf(msg, mn, r < 0 ? "The playlist is an HLS stream, which DX Garden doesn't play"
-                                    : "The playlist has no stream address in it");
+            snprintf(msg, mn, "The playlist has no stream address in it");
             out = OUT_FATAL;
         }
-    } else if (rc == CURLE_HTTP_RETURNED_ERROR) {
-        http_status_message(code, msg, mn);
-        out = http_status_retry(code) ? OUT_DROPPED : OUT_FATAL;
     } else {
-        out = OUT_DROPPED;
-        switch (rc) {
-        case CURLE_OK:
-            snprintf(msg, mn, "The server ended the stream");
-            break;
-        case CURLE_COULDNT_RESOLVE_HOST:
-            snprintf(msg, mn, "Server not found (DNS): check the network and the address");
-            break;
-        case CURLE_COULDNT_CONNECT:
-            snprintf(msg, mn, "Couldn't connect to the server");
-            break;
-        case CURLE_OPERATION_TIMEDOUT:
-            snprintf(msg, mn, P.connected ? "The stream stalled (under 1 KB/s for 10 s)"
-                                          : "No answer from the server");
-            break;
-        case CURLE_RECV_ERROR:
-        case CURLE_SEND_ERROR:
-        case CURLE_PARTIAL_FILE:
-        case CURLE_GOT_NOTHING:
-            snprintf(msg, mn, "The connection dropped");
-            break;
-        case CURLE_PEER_FAILED_VERIFICATION:
-            snprintf(msg, mn, "The server's security certificate isn't valid");
-            out = OUT_FATAL;
-            break;
-        case CURLE_SSL_CACERT_BADFILE:
-            snprintf(msg, mn, "Can't check secure servers: no certificate store");
-            out = OUT_FATAL;
-            break;
-        case CURLE_TOO_MANY_REDIRECTS:
-            snprintf(msg, mn, "Too many redirects");
-            out = OUT_FATAL;
-            break;
-        case CURLE_UNSUPPORTED_PROTOCOL:
-        case CURLE_URL_MALFORMAT:
-            snprintf(msg, mn, "The stream address isn't valid");
-            out = OUT_FATAL;
-            break;
-        default:
-            snprintf(msg, mn, "%s%s%s", curl_easy_strerror(rc), errbuf[0] ? ": " : "", errbuf);
-            break;
-        }
+        out = describe_failure(rc, code, P.connected, errbuf, msg, mn);
     }
     free(P.plbuf);
     P.plbuf = NULL;
@@ -467,6 +569,333 @@ static void find_ca_bundle(void)
 #endif
 }
 
+/* ---- HLS -------------------------------------------------------------- */
+
+#define HLS_MAX_BPS 320000L      /* the best audio-only version up to this */
+#define HLS_START_SEGMENTS 3     /* a live stream starts at least this far from its end */
+#define HLS_START_S 20.0         /* ... and at least this many seconds */
+#define HLS_MAX_BYTES (32u << 20) /* largest playlist or segment read */
+
+typedef struct {
+    unsigned char *p;
+    size_t n, cap;
+    int too_big;
+} membuf;
+
+static size_t mem_write(char *buf, size_t size, size_t nmemb, void *ud)
+{
+    membuf *m = ud;
+    size_t k = size * nmemb;
+    if (m->n + k + 1 > m->cap) {
+        size_t cap = m->cap ? m->cap : 64 * 1024;
+        unsigned char *np;
+        while (cap < m->n + k + 1)
+            cap *= 2;
+        if (cap > HLS_MAX_BYTES) {
+            m->too_big = 1;
+            return 0;
+        }
+        np = realloc(m->p, cap);
+        if (!np)
+            return 0;
+        m->p = np;
+        m->cap = cap;
+    }
+    memcpy(m->p + m->n, buf, k);
+    m->n += k;
+    m->p[m->n] = 0;
+    return k;
+}
+
+/* GETs url into m. Returns OUT_PLAYLIST on success (meaning "carry on"),
+ * else what to do, with a message. The final address goes in eff. */
+static outcome fetch_mem(CURL *c, const char *url, membuf *m, char *eff, size_t effn, long *code,
+                         char *msg, size_t mn)
+{
+    char errbuf[CURL_ERROR_SIZE] = "";
+    char *e = NULL;
+    CURLcode rc;
+    int stopped;
+
+    m->n = 0;
+    m->too_big = 0;
+    net_setup(c, url);
+    curl_easy_setopt(c, CURLOPT_HEADERFUNCTION, NULL);
+    curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, mem_write);
+    curl_easy_setopt(c, CURLOPT_WRITEDATA, m);
+    curl_easy_setopt(c, CURLOPT_ERRORBUFFER, errbuf);
+    rc = curl_easy_perform(c);
+    curl_easy_setopt(c, CURLOPT_ERRORBUFFER, NULL);
+    curl_easy_setopt(c, CURLOPT_WRITEDATA, NULL);
+    *code = 0;
+    curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, code);
+    curl_easy_getinfo(c, CURLINFO_EFFECTIVE_URL, &e);
+    if (eff)
+        snprintf(eff, effn, "%s", e ? e : url);
+    lock();
+    stopped = P.stop;
+    unlock();
+    if (stopped)
+        return OUT_STOPPED;
+    if (rc == CURLE_OK)
+        return OUT_PLAYLIST;
+    if (m->too_big) {
+        snprintf(msg, mn, "An HLS file was too large");
+        return OUT_FATAL;
+    }
+    return describe_failure(rc, *code, 1, errbuf, msg, mn);
+}
+
+/* Fetches and parses the playlist at url (updated to its final address). */
+static outcome hls_load(CURL *c, char *url, size_t un, hls_playlist *pl, membuf *m, char *msg,
+                        size_t mn)
+{
+    long code;
+    char eff[1024];
+    outcome o = fetch_mem(c, url, m, eff, sizeof(eff), &code, msg, mn);
+    memset(pl, 0, sizeof(*pl));
+    if (o != OUT_PLAYLIST)
+        return o;
+    snprintf(url, un, "%s", eff);
+    if (hls_parse((const char *)m->p, m->n, pl) != 0) {
+        hls_free(pl);
+        snprintf(msg, mn, "The HLS playlist couldn't be read");
+        return OUT_FATAL;
+    }
+    return OUT_PLAYLIST;
+}
+
+static int hls_stopped; /* push_audio saw a stop */
+
+/* An ID3 tag from an HLS stream (timed metadata in TS, or at the start of
+ * a packed-audio segment): artist and title if it has them. */
+static void hls_meta(void *ud, const unsigned char *p, size_t n)
+{
+    char a[128], t[ICY_TITLE_MAX];
+    (void)ud;
+    if (id3_track(p, n, a, sizeof(a), t, sizeof(t))) {
+        lock();
+        set_track(a, t);
+        unlock();
+    }
+}
+
+static void hls_es(void *ud, const unsigned char *p, size_t n)
+{
+    (void)ud;
+    if (hls_stopped || !n)
+        return;
+    lock();
+    P.conn_bytes += n;
+    if (!push_audio(p, n))
+        hls_stopped = 1;
+    unlock();
+}
+
+/* Plays an HLS stream: picks a version from a master playlist, then keeps
+ * reloading the media playlist and feeding each new segment's audio into
+ * the buffer. Returns when stopped or when the stream fails. */
+static outcome hls_play(CURL *c, const char *body, size_t blen, const char *url, char *msg,
+                        size_t mn)
+{
+    char pl_url[1024], seg_url[1024], map_url[1024] = "", ref_url[1024];
+    hls_playlist pl;
+    membuf m = { NULL, 0, 0, 0 };
+    ts_demux ts;
+    mp4_audio mp4;
+    long long last = -1;
+    int fails = 0, first_audio = 1, i;
+    outcome o = OUT_DROPPED;
+
+    hls_stopped = 0;
+    snprintf(pl_url, sizeof(pl_url), "%s", url);
+    if (hls_parse(body, blen, &pl) != 0) {
+        hls_free(&pl);
+        snprintf(msg, mn, "The HLS playlist couldn't be read");
+        return OUT_FATAL;
+    }
+    if (pl.is_master) {
+        int v = hls_pick_variant(&pl, HLS_MAX_BPS);
+        const char *ref;
+        /* A video version with the audio on its own: take the audio. */
+        if (pl.audio_uri && (v < 0 || (!pl.variants[v].audio_only && pl.variants[v].has_codecs)))
+            ref = pl.audio_uri;
+        else
+            ref = v >= 0 ? pl.variants[v].uri : NULL;
+        if (!ref || url_resolve(pl_url, ref, ref_url, sizeof(ref_url)) != 0) {
+            hls_free(&pl);
+            snprintf(msg, mn, "The HLS playlist lists no usable stream");
+            return OUT_FATAL;
+        }
+        LOG("hls: %d versions; playing %s (%ld bps)", pl.nvariants, ref_url,
+            v >= 0 && ref != pl.audio_uri ? pl.variants[v].bandwidth : 0L);
+        hls_free(&pl);
+        snprintf(pl_url, sizeof(pl_url), "%s", ref_url);
+        o = hls_load(c, pl_url, sizeof(pl_url), &pl, &m, msg, mn);
+        if (o != OUT_PLAYLIST)
+            goto out;
+        if (pl.is_master) {
+            snprintf(msg, mn, "The HLS playlist points to another list of versions");
+            o = OUT_FATAL;
+            goto out;
+        }
+    }
+    ts_init(&ts);
+    ts.meta_out = hls_meta;
+    memset(&mp4, 0, sizeof(mp4));
+    lock();
+    P.hls = 1;
+    P.codec_hint = CODEC_AAC;
+    snprintf(P.content_type, sizeof(P.content_type), "HLS");
+    unlock();
+
+    for (;;) {
+        int start = 0, did = 0;
+
+        if (pl.encrypted) {
+            snprintf(msg, mn, "This HLS stream is encrypted, which DX Garden can't play");
+            o = OUT_FATAL;
+            goto out;
+        }
+        if (pl.nsegs && last >= 0 && pl.segs[pl.nsegs - 1].seq + 10 < last) {
+            LOG("hls: the stream restarted its numbering");
+            last = -1;
+        }
+        if (last < 0 && !pl.endlist) {
+            /* Start a little behind the live edge: at least three segments
+             * and HLS_START_S of audio, so the buffer has a cushion. */
+            double behind = 0;
+            start = pl.nsegs;
+            while (start > 0 && (pl.nsegs - start < HLS_START_SEGMENTS || behind < HLS_START_S)) {
+                start--;
+                behind += pl.segs[start].duration > 0 ? pl.segs[start].duration
+                                                      : pl.target_duration;
+            }
+        }
+        for (i = start; i < pl.nsegs; i++) {
+            const hls_segment *sg = &pl.segs[i];
+            long code;
+            if (last >= 0 && sg->seq <= last)
+                continue;
+            if (last >= 0 && sg->seq > last + 1)
+                LOG("hls: %lld segments missed", sg->seq - last - 1);
+            /* fMP4: the initialisation section, when it changes. */
+            if (sg->map) {
+                char mu[1024];
+                if (url_resolve(pl_url, sg->map, mu, sizeof(mu)) == 0 && strcmp(mu, map_url) != 0) {
+                    o = fetch_mem(c, mu, &m, NULL, 0, &code, msg, mn);
+                    if (o != OUT_PLAYLIST)
+                        goto out;
+                    snprintf(map_url, sizeof(map_url), "%s", mu);
+                    if (mp4_init(&mp4, m.p, m.n) != 0) {
+                        snprintf(msg, mn, "This HLS stream's audio (%s) isn't one DX Garden plays",
+                                 mp4.codec[0] ? mp4.codec : "fMP4");
+                        o = OUT_FATAL;
+                        goto out;
+                    }
+                }
+            }
+            if (url_resolve(pl_url, sg->uri, seg_url, sizeof(seg_url)) != 0)
+                continue;
+            o = fetch_mem(c, seg_url, &m, NULL, 0, &code, msg, mn);
+            if (o == OUT_STOPPED)
+                goto out;
+            if (o != OUT_PLAYLIST) {
+                if (code == 404 || code == 410) {
+                    /* Gone from the server already: skip it. */
+                    LOG("hls: segment %lld missing (HTTP %ld)", sg->seq, code);
+                    last = sg->seq;
+                    continue;
+                }
+                goto out;
+            }
+            switch (segment_sniff(m.p, m.n)) {
+            case SEG_TS:
+                ts_feed(&ts, m.p, m.n, hls_es, NULL);
+                if (ts.audio_pid < 0) {
+                    if (ts.unsupported)
+                        snprintf(msg, mn, "This HLS stream's audio is AC-3, which DX Garden "
+                                          "doesn't play");
+                    else
+                        snprintf(msg, mn, "This HLS stream has no audio DX Garden can play");
+                    o = OUT_FATAL;
+                    goto out;
+                }
+                break;
+            case SEG_PACKED: {
+                size_t off = id3_skip(m.p, m.n);
+                if (off)
+                    hls_meta(NULL, m.p, off);
+                hls_es(NULL, m.p + off, m.n - off);
+                break;
+            }
+            case SEG_FMP4:
+                if (!mp4.ok && mp4_init(&mp4, m.p, m.n) != 0) {
+                    snprintf(msg, mn, "This HLS stream's audio isn't one DX Garden plays");
+                    o = OUT_FATAL;
+                    goto out;
+                }
+                mp4_fragment(&mp4, m.p, m.n, hls_es, NULL);
+                break;
+            case SEG_UNKNOWN:
+                LOG("hls: segment %lld isn't audio DX Garden knows (%u bytes)", sg->seq,
+                    (unsigned)m.n);
+                break;
+            }
+            if (hls_stopped) {
+                o = OUT_STOPPED;
+                goto out;
+            }
+            if (first_audio) {
+                first_audio = 0;
+                LOG("hls: playing from segment %lld of %lld-%lld", sg->seq, pl.segs[0].seq,
+                    pl.segs[pl.nsegs - 1].seq);
+                lock();
+                P.reconnecting = 0;
+                unlock();
+            }
+            last = sg->seq;
+            did++;
+        }
+        if (pl.endlist && (!pl.nsegs || last >= pl.segs[pl.nsegs - 1].seq)) {
+            snprintf(msg, mn, "The stream ended");
+            o = OUT_DROPPED;
+            goto out;
+        }
+        /* Nothing new: wait for the server to add a segment. */
+        if (!did) {
+            unsigned ms = (unsigned)(pl.target_duration * 500);
+            if (ms < 1000)
+                ms = 1000;
+            if (ms > 10000)
+                ms = 10000;
+            if (!wait_or_stop(ms)) {
+                o = OUT_STOPPED;
+                goto out;
+            }
+        }
+        hls_free(&pl);
+        o = hls_load(c, pl_url, sizeof(pl_url), &pl, &m, msg, mn);
+        if (o == OUT_STOPPED)
+            goto out;
+        if (o != OUT_PLAYLIST) {
+            LOG("hls: reloading the playlist failed: %s", msg);
+            if (o == OUT_FATAL || ++fails >= 3)
+                goto out;
+            if (!wait_or_stop(2000)) {
+                o = OUT_STOPPED;
+                goto out;
+            }
+        } else {
+            fails = 0;
+        }
+    }
+out:
+    hls_free(&pl);
+    free(m.p);
+    return o == OUT_PLAYLIST ? OUT_DROPPED : o;
+}
+
 static int SDLCALL net_thread(void *argp)
 {
     char msg[256], next[512];
@@ -492,6 +921,12 @@ static int SDLCALL net_thread(void *argp)
     for (;;) {
         outcome o = fetch_once(c, msg, sizeof(msg), next, sizeof(next));
 
+        if (o == OUT_HLS) {
+            o = hls_play(c, hls_body, hls_body_len, next, msg, sizeof(msg));
+            free(hls_body);
+            hls_body = NULL;
+            /* A stream that played a while starts the retry count again. */
+        }
         if (o == OUT_STOPPED)
             break;
         if (o == OUT_PLAYLIST) {
@@ -557,8 +992,20 @@ static int SDLCALL net_thread(void *argp)
 
 /* ---- decode thread ----------------------------------------------------- */
 
-static int16_t pcm[GRAIN * 2];
-static unsigned char in_buf[READ_CHUNK];
+#define HEAD_BYTES (16 * 1024) /* read before choosing a decoder */
+
+static int16_t grain[GRAIN * 2];
+static unsigned char head[HEAD_BYTES];
+
+/* Decode-thread state for the callbacks below. */
+static struct {
+    SDL_AudioStream *as;
+    long out_rate;
+    size_t filled; /* frames in `grain` */
+    int applied_volume;
+    int failed;
+    uint64_t busy_since; /* decoding (not waiting) since then */
+} D;
 
 /* Output volume in percent, set by the UI thread (sleep timer fade). */
 static SDL_AtomicInt volume_pct = {100};
@@ -585,11 +1032,13 @@ static SDL_AudioStream *open_output(long rate)
     return as;
 }
 
-/* Hands one grain to SDL, first waiting while QUEUE_MS is already queued,
- * so the decoder runs at the stream's own pace. Returns 0 if stopped. */
-static int output_grain(SDL_AudioStream *as, long rate)
+/* Hands `frames` of `grain` to SDL, first waiting while QUEUE_MS is already
+ * queued, so the decoder runs at the stream's own pace. Returns 0 if
+ * stopped. */
+static int output_grain(size_t frames)
 {
-    int max_bytes = (int)(rate * 4 * QUEUE_MS / 1000);
+    int max_bytes = (int)(D.out_rate * 4 * QUEUE_MS / 1000);
+    int v = SDL_GetAtomicInt(&volume_pct);
     for (;;) {
         int stopped;
         lock();
@@ -597,146 +1046,191 @@ static int output_grain(SDL_AudioStream *as, long rate)
         unlock();
         if (stopped)
             return 0;
-        if (SDL_GetAudioStreamQueued(as) < max_bytes)
+        if (SDL_GetAudioStreamQueued(D.as) < max_bytes)
             break;
         SDL_Delay(5);
     }
-    return SDL_PutAudioStreamData(as, pcm, sizeof(pcm));
+    if (v != D.applied_volume) {
+        D.applied_volume = v;
+        SDL_SetAudioStreamGain(D.as, v / 100.0f);
+    }
+    return SDL_PutAudioStreamData(D.as, grain, (int)(frames * 4));
+}
+
+/* Time spent decoding since the last read or emit (not waiting for data
+ * or for the device), for the decode load figure. */
+static void count_busy(void)
+{
+    uint64_t now = SDL_GetTicksNS();
+    lock();
+    P.decode_us += (now - D.busy_since) / 1000;
+    unlock();
+}
+
+static size_t dec_read(void *ud, void *buf, size_t n)
+{
+    size_t k = 0;
+    (void)ud;
+    count_busy();
+    lock();
+    while (!P.stop && sb_get_state(&P.sb) == SB_BUFFERING)
+        SDL_WaitCondition(P.data_cond, P.lock);
+    if (!P.stop && sb_get_state(&P.sb) != SB_DRAINED) {
+        k = sb_read(&P.sb, buf, n);
+        SDL_SignalCondition(P.space_cond);
+    }
+    unlock();
+    D.busy_since = SDL_GetTicksNS();
+    return k;
+}
+
+static int dec_emit(void *ud, const int16_t *pcm, size_t frames, long rate)
+{
+    int ok = 1;
+    (void)ud;
+    count_busy();
+    if (rate != D.out_rate) {
+        /* What's left at the old rate goes out first. */
+        if (D.filled && D.as && !output_grain(D.filled))
+            ok = 0;
+        D.filled = 0;
+        if (!D.as) {
+            D.as = open_output(rate);
+            if (!D.as) {
+                D.failed = 1;
+                return 0;
+            }
+        } else {
+            SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, (int)rate };
+            SDL_SetAudioStreamFormat(D.as, &spec, NULL);
+        }
+        D.out_rate = rate;
+    }
+    while (ok && frames) {
+        size_t k = GRAIN - D.filled < frames ? GRAIN - D.filled : frames;
+        memcpy(grain + D.filled * 2, pcm, k * 4);
+        D.filled += k;
+        pcm += k * 2;
+        frames -= k;
+        if (D.filled == GRAIN) {
+            lock();
+            P.samples_out += GRAIN;
+            unlock();
+            ok = output_grain(GRAIN);
+            D.filled = 0;
+        }
+    }
+    D.busy_since = SDL_GetTicksNS();
+    return ok;
+}
+
+/* The prebuffer setting is in bytes, sized for 128 kbps MP3 (64 KB is
+ * 4 s). A faster stream gets proportionally more, so FLAC or 320 kbps AAC
+ * has as many seconds of cushion. Lock held. */
+static void apply_prebuffer(void)
+{
+    size_t pb = P.base_prebuffer;
+    if (P.bitrate_kbps > 128) {
+        pb = (size_t)((uint64_t)pb * (unsigned)P.bitrate_kbps / 128);
+        if (pb > sb_capacity(&P.sb) / 2)
+            pb = sb_capacity(&P.sb) / 2;
+    }
+    /* Small changes in the measured bitrate don't count. */
+    if (pb * 10 > P.sb.prebuffer * 11 || pb * 11 < P.sb.prebuffer * 10) {
+        LOG("player: prebuffer %u KB for %d kbps", (unsigned)(pb / 1024), P.bitrate_kbps);
+        sb_set_prebuffer(&P.sb, pb);
+    }
+}
+
+static void dec_info_cb(void *ud, const dec_info *di)
+{
+    (void)ud;
+    lock();
+    snprintf(P.codec, sizeof(P.codec), "%s%s", di->codec, P.hls ? " (HLS)" : "");
+    P.rate = di->rate;
+    P.channels = di->channels;
+    if (di->bitrate_kbps > 0) {
+        P.bitrate_kbps = di->bitrate_kbps;
+        apply_prebuffer();
+    }
+    unlock();
+}
+
+/* Ogg and FLAC streams carry their own track details. */
+static void dec_tags_cb(void *ud, const char *artist, const char *title)
+{
+    (void)ud;
+    lock();
+    set_track(artist, title);
+    unlock();
+}
+
+/* The decoder for this stream: from its bytes when they're clear (servers
+ * often mislabel AAC as audio/mpeg), else from its Content-Type. */
+static codec_id choose_codec(const unsigned char *h, size_t n, codec_id by_type)
+{
+    switch (audio_sniff(h, n)) {
+    case AF_MP3: return CODEC_MP3;
+    case AF_ADTS:
+    case AF_LOAS: return CODEC_AAC;
+    case AF_OGG: return CODEC_OGG;
+    case AF_FLAC: return CODEC_FLAC;
+    case AF_UNKNOWN: break;
+    }
+    return by_type;
 }
 
 static int SDLCALL dec_thread(void *argp)
 {
-    mpg123_handle *mh;
-    const long *rates;
-    size_t nrates, i, filled = 0;
-    int err, failed = 0, applied_volume = -1;
-    long out_rate = 0;
-    SDL_AudioStream *as = NULL;
+    static const dec_io io = { NULL, dec_read, dec_emit, dec_info_cb, dec_tags_cb };
+    char err[256];
+    size_t n = 0;
+    codec_id codec;
+    int rc, stopped;
     (void)argp;
 
-    mh = mpg123_new(NULL, &err);
-    if (!mh) {
-        lock();
-        set_error("MP3 decoder init failed: %s", mpg123_plain_strerror(err));
-        failed = 1;
-        unlock();
-        goto out;
+    memset(&D, 0, sizeof(D));
+    D.applied_volume = -1;
+    D.busy_since = SDL_GetTicksNS();
+
+    /* The first bytes decide the decoder (the prebuffer is larger). */
+    while (n < sizeof(head)) {
+        size_t k = dec_read(NULL, head + n, sizeof(head) - n);
+        if (!k)
+            break;
+        n += k;
     }
-    /* Always 16-bit stereo out; mono streams get duplicated channels. */
-    mpg123_param(mh, MPG123_FLAGS, MPG123_FORCE_STEREO | MPG123_QUIET, 0);
-    mpg123_format_none(mh);
-    mpg123_rates(&rates, &nrates);
-    for (i = 0; i < nrates; i++)
-        mpg123_format(mh, rates[i], MPG123_STEREO, MPG123_ENC_SIGNED_16);
-    mpg123_open_feed(mh);
-
-    for (;;) {
-        size_t n;
-        uint64_t t0;
-        int ret;
-
-        lock();
-        while (!P.stop && sb_get_state(&P.sb) == SB_BUFFERING)
-            SDL_WaitCondition(P.data_cond, P.lock);
-        if (P.stop || sb_get_state(&P.sb) == SB_DRAINED) {
-            unlock();
-            break;
-        }
-        n = sb_read(&P.sb, in_buf, sizeof(in_buf));
-        SDL_SignalCondition(P.space_cond);
-        unlock();
-
-        t0 = SDL_GetTicksNS();
-        if (mpg123_feed(mh, in_buf, n) != MPG123_OK) {
-            lock();
-            set_error("MP3 decoder: %s", mpg123_strerror(mh));
-            unlock();
-            failed = 1;
-            break;
-        }
-
-        for (;;) {
-            size_t done = 0;
-            ret = mpg123_read(mh, (unsigned char *)pcm + filled, sizeof(pcm) - filled, &done);
-            filled += done;
-
-            if (ret == MPG123_NEW_FORMAT) {
-                long rate;
-                int ch, enc;
-                mpg123_getformat(mh, &rate, &ch, &enc);
-                LOG("decoder: format %ld Hz, %d ch, enc 0x%x", rate, ch, enc);
-                if (!as) {
-                    as = open_output(rate);
-                    if (!as) {
-                        failed = 1;
-                        break;
-                    }
-                } else if (rate != out_rate) {
-                    SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, (int)rate };
-                    SDL_SetAudioStreamFormat(as, &spec, NULL);
-                }
-                out_rate = rate;
-                continue;
-            }
-            if (ret == MPG123_ERR) {
-                lock();
-                set_error("MP3 decoder: %s", mpg123_strerror(mh));
-                unlock();
-                failed = 1;
-                break;
-            }
-            if (filled == sizeof(pcm)) {
-                int v = SDL_GetAtomicInt(&volume_pct);
-                lock();
-                P.decode_us += (SDL_GetTicksNS() - t0) / 1000;
-                P.samples_out += GRAIN;
-                unlock();
-                if (v != applied_volume) {
-                    applied_volume = v;
-                    SDL_SetAudioStreamGain(as, v / 100.0f);
-                }
-                if (!output_grain(as, out_rate))
-                    break;
-                t0 = SDL_GetTicksNS();
-                filled = 0;
-            }
-            if (ret == MPG123_NEED_MORE)
-                break;
-        }
-        if (failed)
-            break;
-
-        {
-            struct mpg123_frameinfo fi;
-            uint64_t dt = (SDL_GetTicksNS() - t0) / 1000;
-            int have_info = mpg123_info(mh, &fi) == MPG123_OK;
-            lock();
-            P.decode_us += dt;
-            if (have_info) {
-                P.rate = fi.rate;
-                P.channels = fi.mode == MPG123_M_MONO ? 1 : 2;
-                P.bitrate_kbps = fi.bitrate;
-                P.mpeg_version = fi.version == MPG123_1_0 ? 1
-                               : fi.version == MPG123_2_0 ? 2 : 25;
-                P.layer = fi.layer;
-            }
-            unlock();
-        }
-    }
-
-out:
-    if (as)
-        SDL_DestroyAudioStream(as);
-    if (mh)
-        mpg123_delete(mh);
-
     lock();
-    if (failed) {
+    codec = choose_codec(head, n, P.codec_hint);
+    stopped = P.stop;
+    unlock();
+
+    if (n && !stopped) {
+        LOG("decoder: %s (%s by its first bytes)", codec_name(codec),
+            audio_sniff(head, n) != AF_UNKNOWN ? "chosen" : "not clear; chosen by type");
+        rc = decode_run(codec, head, n, &io, err, sizeof(err));
+        if (D.filled && D.as)
+            output_grain(D.filled);
+        lock();
+        if (rc < 0) {
+            set_error("%s", err);
+            D.failed = 1;
+        } else if (!P.stop && sb_get_state(&P.sb) != SB_DRAINED) {
+            set_error("The %s decoder lost the stream", codec_name(codec));
+            D.failed = 1;
+        }
+        unlock();
+    }
+
+    if (D.as)
+        SDL_DestroyAudioStream(D.as);
+    lock();
+    if (D.failed) {
         /* Take the network thread down with us. */
         P.stop = 1;
         SDL_BroadcastCondition(P.space_cond);
     }
-    LOG("decoder: finished%s", failed ? " with error" : "");
+    LOG("decoder: finished%s", D.failed ? " with error" : "");
     P.dec_done = 1;
     unlock();
     return 0;
@@ -746,8 +1240,6 @@ out:
 
 int player_init(size_t ring_capacity)
 {
-    int err;
-
     memset(&P, 0, sizeof(P));
     P.lock = SDL_CreateMutex();
     P.data_cond = SDL_CreateCondition();
@@ -760,11 +1252,8 @@ int player_init(size_t ring_capacity)
         LOG("player: could not allocate %u byte buffer", (unsigned)ring_capacity);
         return -1;
     }
-    err = mpg123_init();
-    if (err != MPG123_OK) {
-        LOG("player: mpg123_init failed: %s", mpg123_plain_strerror(err));
+    if (decode_init() != 0)
         return -1;
-    }
     LOG("player: ring %u KB, %s", (unsigned)(ring_capacity / 1024),
         curl_version());
     find_ca_bundle();
@@ -775,6 +1264,7 @@ static void start_session(const char *url, size_t prebuffer)
 {
     snprintf(P.url, sizeof(P.url), "%s", url);
     sb_reset(&P.sb);
+    P.base_prebuffer = prebuffer;
     sb_set_prebuffer(&P.sb, prebuffer);
     P.stop = P.user_stop = 0;
     P.net_done = P.dec_done = 0;
@@ -782,9 +1272,13 @@ static void start_session(const char *url, size_t prebuffer)
     P.http_status = 0;
     P.content_type[0] = P.icy_name[0] = P.error[0] = '\0';
     P.title[0] = P.reconnect_why[0] = '\0';
+    P.artist[0] = P.song[0] = P.icy_url[0] = '\0';
     P.reconnecting = 0;
     P.rate = 0;
-    P.channels = P.bitrate_kbps = P.mpeg_version = P.layer = 0;
+    P.channels = P.bitrate_kbps = 0;
+    P.codec[0] = '\0';
+    P.codec_hint = CODEC_MP3;
+    P.hls = 0;
     P.decode_us = P.samples_out = 0;
 
     LOG("player: start %s (prebuffer %u KB)", url, (unsigned)(prebuffer / 1024));
@@ -843,7 +1337,8 @@ void player_stop(void)
 void player_set_prebuffer(size_t prebuffer)
 {
     lock();
-    sb_set_prebuffer(&P.sb, prebuffer);
+    P.base_prebuffer = prebuffer;
+    apply_prebuffer();
     SDL_BroadcastCondition(P.data_cond);
     unlock();
 }
@@ -916,12 +1411,14 @@ void player_get_status(player_status *s)
     s->rate = P.rate;
     s->channels = P.channels;
     s->bitrate_kbps = P.bitrate_kbps;
-    s->mpeg_version = P.mpeg_version;
-    s->layer = P.layer;
+    memcpy(s->codec, P.codec, sizeof(s->codec));
     if (P.samples_out && P.rate)
         s->decode_load_pct = (unsigned)(P.decode_us * P.rate / 10000 / P.samples_out);
     memcpy(s->error, P.error, sizeof(s->error));
     memcpy(s->title, P.title, sizeof(s->title));
+    memcpy(s->artist, P.artist, sizeof(s->artist));
+    memcpy(s->song, P.song, sizeof(s->song));
+    memcpy(s->icy_url, P.icy_url, sizeof(s->icy_url));
     s->reconnect_attempt = P.reconnecting;
     s->reconnect_max = RECONNECT_MAX_ATTEMPTS;
     {
@@ -949,5 +1446,5 @@ void player_shutdown(void)
         unlock();
         SDL_Delay(10);
     }
-    mpg123_exit();
+    decode_exit();
 }

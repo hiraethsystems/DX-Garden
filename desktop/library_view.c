@@ -9,6 +9,7 @@
 #include "log.h"
 #include "search.h"
 #include "stations_file.h"
+#include "track_info.h"
 
 #define SEARCH_MAX 500
 
@@ -203,7 +204,14 @@ static const char *cell_text(int si, int col)
     case 1: return s->place >= 0 ? D->lib.places[s->place].name : s->city;
     case 2: return s->country;
     case 3: return s->genre;
-    default: return s->notes;
+    default: {
+        /* Two buffers, since a sort compares two rows' notes at once. */
+        static char buf[2][300];
+        static int k;
+        k ^= 1;
+        notes_display(s->notes, buf[k], sizeof(buf[k]));
+        return buf[k];
+    }
     }
 }
 
@@ -354,7 +362,7 @@ void libview_init(app_data *d, const libview_hooks *hooks)
     report_lv.dragging_col = -1;
     report_lv.cell = report_cell;
 
-    w_props = ui_window_new("Station Properties", ICON_RADIO, 0, 0, 420, 330,
+    w_props = ui_window_new("Station Properties", ICON_RADIO, 0, 0, 420, 348,
                             UIW_DIALOG | UIW_MODAL, props_draw, NULL);
     w_place = ui_window_new("Place Station", ICON_TOWN, 0, 0, 380, 250, UIW_DIALOG | UIW_MODAL,
                             place_draw, NULL);
@@ -732,8 +740,27 @@ static void props_draw(ui_window *w, rect c, void *ud)
         snprintf(buf, sizeof(buf), "not placed");
     y = field(x, y, lw, "Position:", buf, fw);
     y = field(x, y, lw, "Genre:", s->genre, fw);
-    ui_label(x, y, "Notes:");
-    y += ui_text_wrap(x + lw, y, fw - lw, UI_TEXT, s->notes[0] ? s->notes : "-") + 5;
+    {
+        char web[512], notes[300];
+        if (notes_web(s->notes, web, sizeof(web))) {
+            unsigned col = UI_FLAT ? UI_PAL.accent : COL(0, 0, 0xFF);
+            int tw = draw_text_width(UI_FONT, 0, web);
+            ui_label(x, y, "Website:");
+            if (tw > fw - lw)
+                tw = fw - lw;
+            draw_text_fit(x + lw, y + 10, fw - lw, UI_FONT, 0, col, web);
+            if (ui_hover(x + lw, y, tw, 16)) {
+                draw_rect(x + lw, y + 12, tw, 1, col);
+                UI.cursor = SDL_SYSTEM_CURSOR_POINTER;
+                if (UI.pressed[0] && !SDL_OpenURL(web))
+                    LOG("props: could not open %s: %s", web, SDL_GetError());
+            }
+            y += 18;
+        }
+        notes_display(s->notes, notes, sizeof(notes));
+        ui_label(x, y, "Notes:");
+        y += ui_text_wrap(x + lw, y, fw - lw, UI_TEXT, notes[0] ? notes : "-") + 5;
+    }
     if (s->line > 0)
         snprintf(buf, sizeof(buf), "%s, line %d", s->source_file, s->line);
     else

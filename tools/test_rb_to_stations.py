@@ -342,6 +342,19 @@ class Convert(unittest.TestCase):
         out, _ = rb.convert([station(state="R-04")], Args(), None)
         self.assertEqual(out[0][0].split(" | ")[3], "")
 
+    def test_homepage_note(self):
+        out, _ = rb.convert([station(homepage="https://example.org/fm ")], Args(), None)
+        self.assertTrue(out[0][0].endswith("rb:u-x web:https://example.org/fm"))
+        out, _ = rb.convert([station(homepage="https://example.org/a b")], Args(), None)
+        self.assertTrue(out[0][0].endswith("web:https://example.org/a%20b"))
+        for bad in ("", "ftp://x", "example.org", "http://e/x|y", "http://e/" + "x" * 300):
+            out, _ = rb.convert([station(homepage=bad)], Args(), None)
+            self.assertNotIn("web:", out[0][0])
+        out, skipped = rb.convert([station(homepage="https://radio.garden/listen/x")],
+                                  Args(), None)
+        self.assertEqual(out, [])
+        self.assertEqual(skipped["URL refers to Radio Garden"], 1)
+
     def test_unknown_bitrate_note(self):
         out, _ = rb.convert([station(bitrate=0)], Args(), None)
         self.assertIn("MP3 ?k rb:", out[0][0])

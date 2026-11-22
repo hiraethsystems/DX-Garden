@@ -24,6 +24,7 @@
 #include "library_view.h"
 #include "log.h"
 #include "player.h"
+#include "track_info.h"
 #include "ui.h"
 
 #define PREBUFFER_BYTES (64 * 1024)
@@ -33,7 +34,7 @@
 enum {
     CMD_NONE,
     CMD_PLAY, CMD_STOP, CMD_EXIT, CMD_FAV, CMD_PROPS, CMD_PLACE, CMD_RANDOM, CMD_FIND,
-    CMD_ADD, CMD_RELOAD, CMD_OPEN_FOLDER, CMD_REPORT,
+    CMD_ADD, CMD_RELOAD, CMD_OPEN_FOLDER, CMD_REPORT, CMD_WEBSITE,
     CMD_TOOLBAR, CMD_STATUSBAR, CMD_SMOOTH, CMD_SCALE_AUTO, CMD_ZOOM_IN, CMD_ZOOM_OUT,
     CMD_CASCADE, CMD_TILE, CMD_SHOW_STATIONS, CMD_SHOW_PLAYER, CMD_GALLERY, CMD_ABOUT,
     CMD_SHOW_GLOBE, CMD_AUTO_TUNE, CMD_GLOBE_FILL,
@@ -220,6 +221,33 @@ static const char *state_text(const player_status *st)
 
 /* ---- Now Playing ---- */
 
+/* A station's website: "web:" in its notes, or for the station playing,
+ * the address the stream sends (icy-url). Returns 1 if there is one. */
+static int station_website(int si, char *url, size_t n)
+{
+    if (si >= 0 && si < A.d.lib.stations.count &&
+        notes_web(A.d.lib.stations.items[si].notes, url, n))
+        return 1;
+    if (si >= 0 && si == A.playing_si && A.st.icy_url[0]) {
+        snprintf(url, n, "%s", A.st.icy_url);
+        return 1;
+    }
+    return 0;
+}
+
+static void open_website(const char *url)
+{
+    if (strncmp(url, "http://", 7) != 0 && strncmp(url, "https://", 8) != 0)
+        return;
+    LOG("app: opening %s", url);
+    if (!SDL_OpenURL(url)) {
+        char msg[300];
+        snprintf(msg, sizeof(msg), "Could not open the website: %s", SDL_GetError());
+        status(msg);
+    }
+}
+
+
 static void player_window(ui_window *w, rect c, void *ud)
 {
     const player_status *st = &A.st;
@@ -250,16 +278,45 @@ static void player_window(ui_window *w, rect c, void *ud)
         draw_text_fit(x + 20, y + 10, wide - 20, UI_FONT, 0, UI_TEXT, A.playing_place);
         y += 18;
     }
-    draw_text_fit(x, y + 10, wide, UI_FONT, 0, UI_TEXT,
-                  st->title[0] ? st->title : (st->icy_name[0] ? st->icy_name : " "));
+    /* The song, then the artist with the station's website on the right. */
+    draw_text_fit(x, y + 10, wide, UI_FONT, st->song[0] ? 1 : 0, UI_TEXT,
+                  st->song[0] ? st->song : (st->icy_name[0] ? st->icy_name : " "));
+    y += 18;
+    {
+        char web[512];
+        int lw = 0;
+        if (station_website(A.playing_si, web, sizeof(web))) {
+            static const char label[] = "Website";
+            unsigned col = UI_FLAT ? UI_PAL.accent : COL(0, 0, 0xFF);
+            int hot;
+            lw = draw_text_width(UI_FONT, 0, label);
+            hot = ui_hover(x + wide - lw, y, lw, 16);
+            draw_text(x + wide - lw, y + 10, UI_FONT, 0, col, label);
+            if (hot) {
+                draw_rect(x + wide - lw, y + 12, lw, 1, col);
+                UI.cursor = SDL_SYSTEM_CURSOR_POINTER;
+                ui_tooltip(ui_id("np_web"), web);
+                if (UI.pressed[0])
+                    open_website(web);
+            }
+            lw += 8;
+        }
+        if (st->artist[0])
+            draw_text_fit(x, y + 10, wide - lw, UI_FONT, 0, UI_GRAYTEXT, st->artist);
+    }
     y += 18;
     if (st->state == PLAYER_ERROR) {
         ui_text_wrap(x, y, wide, COL(0x80, 0, 0), st->error);
         y += 36;
     } else {
         ui_label(x, y, state_text(st));
-        if (st->bitrate_kbps) {
-            snprintf(line, sizeof(line), "%d kbps, %ld Hz", st->bitrate_kbps, st->rate);
+        if (st->bitrate_kbps || st->codec[0]) {
+            /* "HE-AAC, 64 kbps"; without a bitrate, "Opus, 48000 Hz". */
+            if (st->bitrate_kbps)
+                snprintf(line, sizeof(line), "%s%s%d kbps", st->codec, st->codec[0] ? ", " : "",
+                         st->bitrate_kbps);
+            else
+                snprintf(line, sizeof(line), "%s, %ld Hz", st->codec, st->rate);
             draw_text(x + wide - draw_text_width(UI_FONT, 0, line), y + 10, UI_FONT, 0,
                       UI_GRAYTEXT, line);
         }
@@ -329,6 +386,7 @@ static ui_menu_item station_items[] = {
     { "Add to &Favourites", "Ctrl+D", CMD_FAV, 0, NULL },
     { "P&lace This Station...", NULL, CMD_PLACE, 0, NULL },
     { "P&roperties", "Alt+Enter", CMD_PROPS, 0, NULL },
+    { "Open &Website", NULL, CMD_WEBSITE, 0, NULL },
     { NULL, NULL, 0, MI_SEPARATOR, NULL },
     { "&Find...", "Ctrl+F", CMD_FIND, 0, NULL },
     { "Random Pla&ce", "Ctrl+R", CMD_RANDOM, 0, NULL },
@@ -384,7 +442,7 @@ static ui_menu_item help_items[] = {
     { "&About DX Garden", NULL, CMD_ABOUT, 0, NULL },
 };
 static ui_menu menus[] = {
-    { file_items, 5 }, { station_items, 9 }, { view_items, 11 }, { window_items, 6 },
+    { file_items, 5 }, { station_items, 10 }, { view_items, 11 }, { window_items, 6 },
     { help_items, 3 },
 };
 static const char *menu_labels[] = { "&File", "&Station", "&View", "&Window", "&Help" };
@@ -422,6 +480,10 @@ static void update_menu_checks(void)
                                  ? "Remove from &Favourites" : "Add to &Favourites";
     station_items[4].flags = s && s->place < 0 ? 0 : MI_DISABLED;
     station_items[5].flags = s ? 0 : MI_DISABLED;
+    {
+        char web[512];
+        station_items[6].flags = station_website(cur, web, sizeof(web)) ? 0 : MI_DISABLED;
+    }
     view_items[0].flags = A.show_toolbar ? MI_CHECKED : 0;
     view_items[1].flags = A.show_status ? MI_CHECKED : 0;
     view_items[4].flags = font_smooth() ? MI_CHECKED : 0;
@@ -465,6 +527,12 @@ static void command(int cmd)
     case CMD_EXIT: A.quit = 1; break;
     case CMD_FAV: libview_toggle_favourite(libview_current()); break;
     case CMD_PROPS: libview_properties(libview_current()); break;
+    case CMD_WEBSITE: {
+        char web[512];
+        if (station_website(libview_current(), web, sizeof(web)))
+            open_website(web);
+        break;
+    }
     case CMD_PLACE: libview_place(libview_current()); break;
     case CMD_RANDOM: libview_random_place(); break;
     case CMD_FIND:
@@ -614,10 +682,10 @@ int app_init(SDL_Window *win, const char *assets, const char *data)
                                  libview_draw, NULL);
     A.w_stations->min_w = 420;
     A.w_stations->min_h = 220;
-    A.w_player = ui_window_new("Now Playing", ICON_RADIO, 656, 8, 330, 260, UIW_RESIZABLE,
+    A.w_player = ui_window_new("Now Playing", ICON_RADIO, 656, 8, 330, 278, UIW_RESIZABLE,
                                player_window, NULL);
     A.w_player->min_w = 280;
-    A.w_player->min_h = 240;
+    A.w_player->min_h = 258;
     A.w_gallery = ui_window_new("Control Gallery", ICON_SETTINGS, 120, 60, 450, 380,
                                 UIW_RESIZABLE, gallery_window, NULL);
     A.w_gallery->min_w = 450;

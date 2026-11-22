@@ -178,6 +178,135 @@ stream_kind stream_classify(const char *content_type, const char *url,
     return SK_UNKNOWN;
 }
 
+/* ---- audio format from the bytes ------------------------------------- */
+
+/* Length of the MPEG audio frame starting at p, or 0 if it isn't one. */
+static size_t mpa_frame_len(const unsigned char *p)
+{
+    static const unsigned short BR[2][3][16] = {
+        { /* MPEG-1: layer I, II, III */
+          { 0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0 },
+          { 0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0 },
+          { 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0 } },
+        { /* MPEG-2 and 2.5 */
+          { 0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256, 0 },
+          { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0 },
+          { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0 } }
+    };
+    static const unsigned SR[3] = { 44100, 48000, 32000 };
+    unsigned ver, layer, bri, sri, pad, br, sr;
+
+    if (p[0] != 0xFF || (p[1] & 0xE0) != 0xE0)
+        return 0;
+    ver = (p[1] >> 3) & 3; /* 0: 2.5, 1: reserved, 2: 2, 3: 1 */
+    layer = (p[1] >> 1) & 3; /* 1: III, 2: II, 3: I, 0: reserved (ADTS) */
+    bri = p[2] >> 4;
+    sri = (p[2] >> 2) & 3;
+    pad = (p[2] >> 1) & 1;
+    if (ver == 1 || layer == 0 || bri == 0 || bri == 15 || sri == 3)
+        return 0;
+    br = BR[ver == 3 ? 0 : 1][3 - layer][bri] * 1000u;
+    sr = SR[sri] >> (ver == 3 ? 0 : ver == 2 ? 1 : 2);
+    if (layer == 3) /* layer I */
+        return (12 * br / sr + pad) * 4;
+    if (layer == 1 && ver != 3) /* layer III, MPEG-2/2.5 */
+        return 72 * br / sr + pad;
+    return 144 * br / sr + pad;
+}
+
+/* Length of the ADTS frame starting at p (7 bytes readable), or 0. */
+static size_t adts_frame_len(const unsigned char *p)
+{
+    size_t len;
+    if (p[0] != 0xFF || (p[1] & 0xF6) != 0xF0) /* sync, layer 0 */
+        return 0;
+    if (((p[2] >> 2) & 0xF) > 12) /* sampling frequency index */
+        return 0;
+    len = ((size_t)(p[3] & 3) << 11) | ((size_t)p[4] << 3) | (p[5] >> 5);
+    return len >= 7 ? len : 0;
+}
+
+/* Length of the LOAS (AudioSyncStream) frame starting at p, or 0. */
+static size_t loas_frame_len(const unsigned char *p)
+{
+    if (p[0] != 0x56 || (p[1] & 0xE0) != 0xE0)
+        return 0;
+    return 3 + (((size_t)(p[1] & 0x1F) << 8) | p[2]);
+}
+
+/* Two frames in a row starting at i, within n bytes. */
+static int frames_line_up(const unsigned char *p, size_t n, size_t i, size_t (*len)(const unsigned char *))
+{
+    size_t a, b;
+    if (i + 7 > n)
+        return 0;
+    a = len(p + i);
+    if (!a || i + a + 7 > n)
+        return 0;
+    b = len(p + i + a);
+    return b != 0;
+}
+
+audio_format audio_sniff(const unsigned char *p, size_t n)
+{
+    size_t at;
+    return audio_sniff_at(p, n, &at);
+}
+
+audio_format audio_sniff_at(const unsigned char *p, size_t n, size_t *at)
+{
+    size_t i, start = 0, limit;
+
+    *at = 0;
+    if (!p)
+        return AF_UNKNOWN;
+    /* ID3v2: "ID3", version, flags, then a 28-bit size. */
+    if (n >= 10 && p[0] == 'I' && p[1] == 'D' && p[2] == '3' && !(p[6] & 0x80) &&
+        !(p[7] & 0x80) && !(p[8] & 0x80) && !(p[9] & 0x80)) {
+        size_t sz = ((size_t)p[6] << 21) | ((size_t)p[7] << 14) | ((size_t)p[8] << 7) | p[9];
+        start = 10 + sz + ((p[5] & 0x10) ? 10 : 0);
+        if (start >= n)
+            return AF_MP3; /* only the tag so far: as before, MP3 */
+    }
+    *at = start;
+    if (n - start >= 4 && memcmp(p + start, "OggS", 4) == 0)
+        return AF_OGG;
+    if (n - start >= 4 && memcmp(p + start, "fLaC", 4) == 0)
+        return AF_FLAC;
+    /* Streams joined mid-frame: look a little way in. */
+    limit = n - start < 8192 ? n : start + 8192;
+    for (i = start; i + 7 <= limit; i++) {
+        *at = i;
+        if (p[i] == 0xFF) {
+            if (frames_line_up(p, n, i, adts_frame_len))
+                return AF_ADTS;
+            if (frames_line_up(p, n, i, mpa_frame_len))
+                return AF_MP3;
+        } else if (p[i] == 0x56 && frames_line_up(p, n, i, loas_frame_len)) {
+            return AF_LOAS;
+        }
+    }
+    *at = 0;
+    return AF_UNKNOWN;
+}
+
+ogg_codec ogg_sniff(const unsigned char *p, size_t n)
+{
+    size_t body;
+    if (!p || n < 28 || memcmp(p, "OggS", 4) != 0)
+        return OGG_UNKNOWN;
+    body = 27 + (size_t)p[26]; /* header, then the segment table */
+    if (body + 8 > n)
+        return OGG_UNKNOWN;
+    if (memcmp(p + body, "\x01vorbis", 7) == 0)
+        return OGG_VORBIS;
+    if (memcmp(p + body, "OpusHead", 8) == 0)
+        return OGG_OPUS;
+    if (memcmp(p + body, "\x7f" "FLAC", 5) == 0)
+        return OGG_FLAC;
+    return OGG_UNKNOWN;
+}
+
 static int ncase_eq(const char *a, const char *b, size_t k)
 {
     size_t i;

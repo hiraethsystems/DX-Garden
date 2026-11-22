@@ -35,24 +35,28 @@ elseif(DXG_STATIC_DEPS)
     # Everything from third_party/linux-static/, so the program needs only
     # glibc and what SDL loads at run time.
     set(dxg_l "${DXG_LINUX_STATIC_DEPS}/lib")
-    foreach(lib curl mbedtls mbedx509 mbedcrypto everest p256m mpg123 freetype harfbuzz fribidi)
+    foreach(lib curl mbedtls mbedx509 mbedcrypto everest p256m mpg123 faad vorbisfile vorbis
+                opusfile opus FLAC ogg freetype harfbuzz fribidi)
         if(NOT EXISTS "${dxg_l}/lib${lib}.a")
             message(FATAL_ERROR "${dxg_l}/lib${lib}.a is missing: run tools/build_win_deps.sh linux-static")
         endif()
     endforeach()
     set(DXG_CURL "${dxg_l}/libcurl.a" "${dxg_l}/libmbedtls.a" "${dxg_l}/libmbedx509.a"
         "${dxg_l}/libmbedcrypto.a" "${dxg_l}/libeverest.a" "${dxg_l}/libp256m.a" pthread)
-    set(DXG_MPG123 "${dxg_l}/libmpg123.a")
+    set(DXG_MPG123 "${dxg_l}/libmpg123.a" "${dxg_l}/libfaad.a" "${dxg_l}/libvorbisfile.a"
+        "${dxg_l}/libvorbis.a" "${dxg_l}/libopusfile.a" "${dxg_l}/libopus.a" "${dxg_l}/libFLAC.a"
+        "${dxg_l}/libogg.a")
     set(DXG_TEXT "${dxg_l}/libharfbuzz.a" "${dxg_l}/libfreetype.a" "${dxg_l}/libfribidi.a")
     set(DXG_TEXT_INCLUDES "${DXG_LINUX_STATIC_DEPS}/include"
         "${DXG_LINUX_STATIC_DEPS}/include/freetype2" "${DXG_LINUX_STATIC_DEPS}/include/harfbuzz"
-        "${DXG_LINUX_STATIC_DEPS}/include/fribidi")
+        "${DXG_LINUX_STATIC_DEPS}/include/fribidi" "${DXG_LINUX_STATIC_DEPS}/include/opus")
     set(DXG_PLATFORM_NAME "Linux")
 else()
-    pkg_check_modules(DXG_PC REQUIRED IMPORTED_TARGET libcurl libmpg123)
+    pkg_check_modules(DXG_PC REQUIRED IMPORTED_TARGET libcurl libmpg123 vorbisfile opusfile flac)
+    find_library(FAAD_LIB NAMES faad REQUIRED)
     pkg_check_modules(DXG_TEXT_PC REQUIRED IMPORTED_TARGET freetype2 harfbuzz fribidi)
     set(DXG_CURL PkgConfig::DXG_PC)
-    set(DXG_MPG123 "")
+    set(DXG_MPG123 ${FAAD_LIB})
     set(DXG_TEXT PkgConfig::DXG_TEXT_PC)
     set(DXG_TEXT_INCLUDES "")
     set(DXG_PLATFORM_NAME "Linux")
@@ -62,6 +66,7 @@ add_executable(dxgarden_desktop WIN32
     ${CORE_SOURCES}
     desktop/app.c
     desktop/data.c
+    desktop/decode.c
     desktop/draw.c
     desktop/earth.c
     desktop/font.c
@@ -89,7 +94,7 @@ if(DXG_STATIC_DEPS AND NOT WIN32)
     # HarfBuzz is C++: its runtime goes in too, so the program doesn't need
     # this machine's libstdc++.
     target_compile_definitions(dxgarden_desktop PRIVATE CURL_STATICLIB FRIBIDI_LIB_STATIC
-                               DXG_STATIC_DEPS)
+                               FLAC__NO_DLL DXG_STATIC_DEPS)
     target_link_options(dxgarden_desktop PRIVATE -static-libstdc++ -static-libgcc)
     set_target_properties(dxgarden_desktop PROPERTIES LINKER_LANGUAGE CXX)
     enable_language(CXX)

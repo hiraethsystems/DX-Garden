@@ -238,6 +238,18 @@ def clean_url(u):
     return u
 
 
+def clean_homepage(u):
+    """The station's website for "web:<url>" in the notes, or None. The
+    notes are split at spaces, so the address must not contain any."""
+    u = (u or "").strip()
+    if not u:
+        return None
+    u = clean_url(u)
+    if not u or len(u) > 200:
+        return None
+    return u
+
+
 def country_name(s):
     s = clean(s, 80)
     if s.lower().startswith("the "):
@@ -686,7 +698,9 @@ def convert(stations, args, cities):
         if not url:
             skip("no usable stream URL")
             continue
-        if any(m in url.lower() for m in RADIO_GARDEN_MARKS):
+        homepage = clean_homepage(st.get("homepage"))
+        if any(m in url.lower() for m in RADIO_GARDEN_MARKS) or (
+                homepage and any(m in homepage.lower() for m in RADIO_GARDEN_MARKS)):
             skip("URL refers to Radio Garden")
             continue
         if url in seen_url:
@@ -732,6 +746,8 @@ def convert(stations, args, cities):
                     ch.isdigit() for ch in region):
                 city, city_from = region, "region"
         notes = "%s %s rb:%s" % (codec, ("%dk" % bitrate) if bitrate else "?k", uuid)
+        if homepage:
+            notes += " web:" + homepage
         if geo != "ok":
             notes += " " + GEO_NOTES[geo]
         if relabelled:
@@ -788,7 +804,8 @@ def header(args, cities, count):
             args.city_km, "" if cities else " - not used"),
         "# otherwise Radio Browser's region, otherwise blank.",
         "# Fields: Name | Stream URL | Country | City | Latitude | Longitude | Genre | Notes",
-        "# Notes: codec, bitrate and the Radio Browser station id (rb:<uuid>).",
+        "# Notes: codec, bitrate, the Radio Browser station id (rb:<uuid>) and",
+        "# the station's website (web:<url>) when Radio Browser has one.",
     ]
     if cities:
         lines.insert(4, "# Positions outside the station's country were checked and fixed "

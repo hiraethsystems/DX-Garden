@@ -118,6 +118,18 @@ favourites and settings live in `~/.local/share/dxgarden/` and are kept.
 If the system has no FUSE, start the AppImage with
 `--appimage-extract-and-run`.
 
+The Linux version plays MP3, AAC and HE-AAC (v1 and v2), Ogg Vorbis, Opus
+and FLAC streams, and HLS streams (`.m3u8`, used by the BBC, Radio France
+and many others), unless they're encrypted (the Vita version plays MP3
+only). It works out the format
+from the stream itself, so a station that calls its AAC "MP3" still plays.
+
+Now Playing shows the song and the artist when the station sends them
+(as a stream title, or in the tags of Ogg, FLAC and HLS streams), and a
+Website link (also Station, Open Website) when the station has one: a
+`web:https://...` word in the station's Notes, or the address the stream
+itself announces.
+
 View, Look switches between the classic look and a flat one in your
 desktop's colours (your KDE colour scheme, or GNOME's light or dark style).
 On KDE Plasma it runs through XWayland by default (SDL's choice there); to
@@ -200,6 +212,7 @@ you need these packages:
 
 ```sh
 sudo apt install cmake ninja-build meson curl libcurl4-openssl-dev libmpg123-dev \
+  libfaad-dev libvorbis-dev libopusfile-dev libflac-dev \
   libfreetype-dev libharfbuzz-dev libfribidi-dev libx11-dev libxext-dev libxrandr-dev \
   libxcursor-dev libxi-dev libxss-dev libxfixes-dev libwayland-dev libxkbcommon-dev \
   wayland-protocols libdecor-0-dev libegl-dev libgl-dev libpipewire-0.3-dev libpulse-dev \
@@ -285,7 +298,10 @@ All in `ux0:data/dxgarden/`. They are created on first run if missing.
 
 - `stations.txt`: your stations, one per line:
   `Name | Stream URL | Country | City | Latitude | Longitude | Genre | Notes`.
-  The file explains the format and has commented-out examples.
+  The file explains the format and has commented-out examples. In the
+  Notes, `web:<address>` gives the station's website (the desktop app
+  shows it as a link; lists made by `tools/rb_to_stations.py` include it
+  when Radio Browser has one).
 - `import/`: drop M3U, M3U8 or PLS files here. Their stations appear under
   "Unplaced" until you give them a place in the app.
 - `favourites.txt`, `recent.txt`: managed by the app (URLs, one per line).
@@ -307,6 +323,13 @@ All in `ux0:data/dxgarden/`. They are created on first run if missing.
   FriBidi (LGPL 2.1), FreeType (FreeType licence), libpng (libpng
   licence), libjpeg-turbo (IJG and BSD), zlib (zlib licence), bzip2
   (bzip2 licence) and Zstandard (BSD).
+- The Linux AppImage: SDL3 (zlib licence), libcurl (curl licence), Mbed
+  TLS (Apache 2.0), mpg123 (LGPL 2.1), faad2 (GPL 2 or later), libogg,
+  libvorbis, Opus, opusfile and libFLAC (BSD), FreeType (FreeType
+  licence), HarfBuzz (MIT) and FriBidi (LGPL 2.1), linked in; Liberation
+  Sans and Noto Sans fonts (SIL Open Font License 1.1); globe imagery from
+  NASA Blue Marble: Next Generation (Reto Stöckli, NASA Earth Observatory;
+  public domain).
 - LiveArea art: see "LiveArea art" above.
 - The bundled station list (`assets/stations/stations.txt`, shipped in the
   VPK) and lists made with `tools/rb_to_stations.py` come from Radio

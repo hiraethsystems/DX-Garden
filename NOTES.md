@@ -1757,3 +1757,161 @@ FUSE (the image needs `fusermount3` to mount itself; otherwise run it with
   as 0.9.0, with 54 country labels spelled properly (for example Bosnia
   and Herzegovina, Côte d'Ivoire, North Korea, Réunion, Trinidad and
   Tobago); no stations added or removed.
+- **Published 2026-11-22.** Pull request #4 merged into `main` with a merge
+  commit (7c24817), tagged `v0.9.1` there, and the AppImage rebuilt from
+  that commit with `--release`. Published as a regular release marked
+  Latest, with the AppImage attached:
+  https://github.com/hiraethsystems/DX-Garden/releases/tag/v0.9.1
+  SHA-256 of `dxgarden-0.9.1-x86_64.AppImage`:
+  64bb144621e81b379eef83dc13cba36de46acdaff28b43263eda7a65dd87637f
+  (checked against the downloaded file).
+- Next build numbers continue from 41. `VERSION` stays 0.9.1 until the
+  next release is decided.
+
+## Linux formats, F1: AAC, Ogg Vorbis, Opus, FLAC (build 41, 2026-11-22)
+
+- **Decision by the tester (2026-11-22):** add every format we can to the
+  **Linux version only**, so the station list and globe can cover all of
+  Radio Browser; the Vita stays at 0.9.0 (MP3 only) for now. Then
+  artist/title and station website links, a fuller list, and later an
+  in-app list download (see "Plan" below). HLS was asked for explicitly.
+- **Libraries** (static in the AppImage, built by `tools/build_win_deps.sh
+  linux-decoders`, SHA-256 checked; Xiph's sums are the ones Xiph
+  publishes, faad2's is of GitHub's tag archive): faad2 2.11.4 (GPL 2 or
+  later, compatible with our GPL 3; AAC-LC, HE-AAC, HE-AAC v2, ADTS and
+  LOAS/LATM), libogg 1.3.6, libvorbis 1.3.7, opus 1.6.1, opusfile 0.12
+  (built without its own HTTP, which would need OpenSSL), libFLAC 1.5.0
+  (native and Ogg FLAC). Not used: fdk-aac (licence not GPL-compatible),
+  FFmpeg (far more than needed). The development build uses Debian's
+  `libfaad-dev libvorbis-dev libopusfile-dev libflac-dev`.
+- **`desktop/decode.c`:** one runner per format on the decode thread,
+  pulling bytes through a blocking read from the ring buffer and handing
+  out 16-bit stereo (mono doubled, more channels mixed to the front pair;
+  faad2 mixes 5.1 itself). MP3 moved there unchanged.
+- **Choosing the decoder:** the decode thread reads the first 16 KB (the
+  prebuffer is bigger) and `audio_sniff()` (`core/stream_info.c`, unit
+  tested) names the format from the bytes: Ogg, FLAC, or MPEG audio, ADTS
+  or LOAS frames, counted only when two frames in a row line up, after any
+  ID3 tag, anywhere in the first 8 KB (streams can join mid-frame). Only
+  when the bytes aren't clear does the Content-Type decide. So AAC served
+  as `audio/mpeg` plays. Inside Ogg, the first page says Vorbis, Opus or
+  FLAC (`ogg_sniff()`). WebM and WAV are still refused with a message.
+- **Track titles from the stream:** Ogg and FLAC streams carry
+  ARTIST/TITLE comments (Icecast starts a new chained link per song);
+  these become the Now Playing title, as ICY titles do.
+- **Prebuffer scaled to the bitrate:** the setting is in bytes, sized for
+  128 kbps (64 KB, 4 s). With faster streams it was under a second (FLAC
+  at 1,000 kbps: 0.5 s), and a FLAC test had an underrun at 8 s. Once the
+  decoder knows the bitrate, the prebuffer grows in proportion (up to half
+  the ring), ignoring changes under 10%. FLAC's bitrate is measured from
+  the bytes read.
+- **Now Playing** shows the format: "HE-AAC, 64 kbps", or "Opus, 48000 Hz"
+  until a bitrate is known.
+
+**Checked here** (`--play`, 12-20 s each, no underruns after the prebuffer
+change): Radio Paradise AAC 320, France Info AAC 48 kHz, Süper FM and Fox
+News Radio HE-AAC, SomaFM Groove Salad HE-AAC 32 kbps, Deutschlandfunk Opus
+mono (with ICY metadata inside the Ogg stream), WALM Opus, Nightwave Plaza
+(chained Opus, titles change per song), Energy 90s Ogg Vorbis (titles from
+comments), Pure Lounge Ogg FLAC 24 bit, Rondo Classic FLAC. Decode load
+0-2%. NRJ refused (HTTP 403, probably geo-blocking).
+
+**Not checked:** an HE-AAC v2 stream that says so (SomaFM's 32 kbps
+stream reports v1), AAC actually served as `audio/mpeg` (none found yet;
+the sniffer tests cover it), switching between formats in the window.
+
+**Plan (Linux):** F2 HLS; F3 artist and title on separate lines, station
+websites (`web:` in Notes, `icy-url`); F4 a fuller bundled list for the
+desktop app only (the Vita keeps its MP3 list); F5 downloading a new list
+from Radio Browser inside the app, with a dialog for formats and filters
+(needs decisions first: it changes the "never fetches a directory"
+promise for Linux, needs GeoNames data, and the script's rules in C).
+
+**Known issue:** the Windows build no longer links, because
+`build_win_deps.sh win64` doesn't build the new decoders. Fixing it means
+adding them to the win64 target; left until we decide what happens to
+the Windows port.
+
+## Linux formats, F2: HLS (build 42, 2026-11-22)
+
+- **Survey first** (the 60 most-clicked HLS stations in Radio Browser):
+  most segments are MPEG-TS with AAC (BBC, Radio France, RTL, RNE, CCTV),
+  then "packed" AAC or MP3 segments that start with one or two ID3 tags
+  (Turkish, Korean and Taiwanese stations), one fragmented MP4 (NHK World
+  in Japanese), one encrypted-key line with METHOD=NONE, and a handful of
+  dead or geo-blocked ones.
+- **`core/hls.c`:** playlist parsing (master and media playlists,
+  EXT-X-MEDIA audio renditions, EXT-X-MAP, EXT-X-KEY, ENDLIST) and URL
+  resolution (RFC 3986 references, "." and ".."). **`core/media_demux.c`:**
+  audio out of segments: TS (PAT, PMT, the first ADTS/LOAS/MPEG audio
+  stream, PES headers removed; AC-3 refused with a message), packed audio
+  (ID3 tags skipped), fMP4 (the moov's AudioSpecificConfig, then each
+  fragment's samples with an ADTS header added; for HE-AAC the core AAC-LC
+  config goes in the header and faad2 finds SBR/PS in the stream). 66 new
+  unit tests, including synthetic TS and MP4.
+- **The network thread** recognises an HLS playlist (by `#EXT-X-` in it)
+  and runs `hls_play()`: from a master playlist it takes the best
+  audio-only version up to 320 kbps (or the separate audio rendition of a
+  video stream, or the lowest version if all are video); then it reloads
+  the media playlist and feeds each new segment's audio into the same
+  buffer the decoders read, so everything after that (format sniffing,
+  decoders, titles, reconnecting) is shared with ordinary streams. A live
+  stream starts at least three segments and 20 s behind the live edge, for
+  a cushion. Missing segments (404/410) are skipped; three failed playlist
+  reloads in a row count as a drop and the usual reconnect takes over.
+  Encrypted streams (EXT-X-KEY other than NONE) are refused with a message.
+- Now Playing shows "(HLS)" after the format, e.g. "HE-AAC v2 (HLS)".
+
+**Checked here:** 19 of 20 popular HLS stations played for 25 s without
+underruns: BBC Radio 1, 4 and 6 Music, FIP, RTL (HE-AAC v2), RTL 102.5
+(two ID3 tags per segment), RNE, CCTV-13, NHK World (fMP4) and NHK World
+Radio, Air Vividh Bharti, Aaj Tak (a video stream: its audio only), KRAL
+FM, Power POP, powerturk, Radyo Turkuvaz, TRT Türkü, Sinar FM, and an MP3
+HLS stream (天籁之音). KBS refused (HTTP 403, geo-blocked). RTL, NHK World
+and Radyo Turkuvaz ran for 2 minutes with steady playlist reloads. The
+AppImage plays HLS too.
+
+**Not done:** titles carried in HLS ID3 tags (F3), AES-128 encrypted
+streams, AC-3 audio, Opus or FLAC inside fMP4, choosing a lower version
+when the network is slow (it always takes the best up to 320 kbps).
+
+## Linux now playing, F3: artist, song and website (build 43, 2026-11-22)
+
+- **`core/track_info.c`:** `title_split()` splits a stream title at the
+  first " - " (or a spaced en or em dash) when there is text on both
+  sides; otherwise the whole thing is the song. `id3_track()` reads TIT2
+  and TPE1 from ID3v2.2/2.3/2.4 tags (Latin-1, UTF-16 with or without a
+  byte order mark, UTF-8). `notes_web()` and `notes_display()` handle the
+  new `web:<url>` word in a station's Notes. Unit tests for all of them.
+- **HLS titles:** the TS demuxer now also collects timed ID3 metadata
+  (stream type 0x15) and packed-audio segments hand over their leading ID3
+  tag; both go through `id3_track()`.
+- **Now Playing:** the song (bold) on one line, the artist (grey) below it,
+  and a "Website" link on the right of the artist line. The link opens in
+  the desktop's browser (SDL_OpenURL). It comes from `web:` in the
+  station's Notes, otherwise from the stream's `icy-url` header (http and
+  https only). Station, Open Website does the same for the selected
+  station. Station Properties shows a Website line; the Notes column and
+  the Properties notes hide the `web:` and `rb:` words.
+- **`tools/rb_to_stations.py`** adds `web:<homepage>` to the Notes when
+  Radio Browser has a usable http(s) homepage (no "|", control characters
+  or over 200 characters; spaces become %20). A homepage pointing at Radio
+  Garden skips the station, as a stream URL does. The Vita ignores Notes,
+  so its lists are unaffected; the bundled Vita list was not rebuilt.
+- The headless player (`--play`) prints the artist, song and station site
+  at the end.
+
+**Checked here:** artist/song split and icy-url on SomaFM Groove Salad
+(MP3), Nightwave Plaza (Opus tags), Radio Paradise (AAC); unit tests and
+script tests pass. The build 43 AppImage plays and shows titles.
+
+**HLS titles in practice:** of 19 popular HLS stations, only RTL (France)
+sends standard TIT2/TPE1 frames, and they show up (presenter and show,
+e.g. "Isabelle Langé" / "On refait le sport"). Most others carry only the
+Apple timestamp (PRIV); RTL 102.5 puts JSON song data in a TEXT
+(lyricist) frame, which is station-specific and not read. The other 17
+still played; 天籁之音's server was not answering at all (curl timed out
+too).
+
+**Not checked:** the Now Playing layout and the Website link in the GUI
+(clicking opens the browser), long titles at large interface sizes.

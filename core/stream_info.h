@@ -25,6 +25,27 @@ typedef enum {
 stream_kind stream_classify(const char *content_type, const char *url,
                             const unsigned char *head, size_t n, char *format, size_t fn);
 
+/* The audio format from the first bytes of a stream, whatever its
+ * Content-Type says (servers often label AAC as audio/mpeg). Frame-based
+ * formats count only when two frames in a row line up, so stray sync bytes
+ * inside other data don't fool it. A leading ID3v2 tag is skipped. */
+typedef enum {
+    AF_UNKNOWN,
+    AF_MP3,  /* MPEG audio layer I, II or III */
+    AF_ADTS, /* AAC in ADTS frames */
+    AF_LOAS, /* AAC in LOAS/LATM frames */
+    AF_OGG,  /* an Ogg page (Vorbis, Opus or FLAC inside) */
+    AF_FLAC  /* native FLAC */
+} audio_format;
+
+audio_format audio_sniff(const unsigned char *p, size_t n);
+/* The same, and where the first frame (or page) starts in `at`. */
+audio_format audio_sniff_at(const unsigned char *p, size_t n, size_t *at);
+
+/* What an Ogg stream carries, from its first page. */
+typedef enum { OGG_UNKNOWN, OGG_VORBIS, OGG_OPUS, OGG_FLAC } ogg_codec;
+ogg_codec ogg_sniff(const unsigned char *p, size_t n);
+
 /* First http(s) stream URL in a playlist body. Returns 1 if found, 0 if
  * none, -1 if it is an HLS playlist. */
 int playlist_first_url(const char *body, size_t len, char *out, size_t n);

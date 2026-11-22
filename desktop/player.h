@@ -1,6 +1,7 @@
 /*
  * Stream player: a network thread (libcurl) fills a stream_buffer, a decode
- * thread (mpg123) drains it into an SDL audio stream on the default device.
+ * thread (decode.h: MP3, AAC, Ogg Vorbis, Opus, FLAC) drains it into an SDL
+ * audio stream on the default device.
  *
  * The network thread follows playlist addresses (M3U/PLS/ASX), strips ICY
  * metadata (track titles) out of the audio, and reconnects with a back-off
@@ -40,11 +41,13 @@ typedef struct {
     long rate;
     int channels;
     int bitrate_kbps;
-    int mpeg_version; /* 1, 2 or 25 for 2.5 */
-    int layer;
+    char codec[32];   /* "MP3", "AAC", "HE-AAC", "HE-AAC v2", "Ogg Vorbis", "Opus", "FLAC" */
     unsigned decode_load_pct; /* decode CPU time / audio time */
     char error[256];
-    char title[256];          /* now playing (ICY metadata), "" if none */
+    char title[256];          /* now playing, "Artist - Title" or as given; "" if none */
+    char artist[128];         /* "" when the stream doesn't say */
+    char song[256];           /* the title without the artist */
+    char icy_url[256];        /* the station's website as the stream gives it, or "" */
     int reconnect_attempt;    /* 0 unless reconnecting */
     int reconnect_max;
     unsigned retry_in_s;      /* seconds until the next try */

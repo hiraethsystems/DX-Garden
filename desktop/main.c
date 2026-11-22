@@ -161,14 +161,18 @@ static int run_headless(const char *url, int seconds)
             played = 1;
         if (i % 10 == 9) {
             status_line(&st, line, sizeof(line));
-            printf("%3ds  %-60s buffer %3u%%  %ld Hz %d kbps  decode %u%%  %s\n", i / 10 + 1,
-                   line, st.fill_pct, st.rate, st.bitrate_kbps, st.decode_load_pct, st.title);
+            printf("%3ds  %-40s buffer %3u%%  %s %ld Hz %d kbps  decode %u%%  underruns %u  %s\n",
+                   i / 10 + 1, line, st.fill_pct, st.codec, st.rate, st.bitrate_kbps,
+                   st.decode_load_pct, st.underruns, st.title);
             fflush(stdout);
         }
         if (st.state == PLAYER_ERROR)
             break;
     }
     player_get_status(&st);
+    if (st.song[0] || st.artist[0] || st.icy_url[0])
+        printf("track: artist \"%s\", song \"%s\"%s%s\n", st.artist, st.song,
+               st.icy_url[0] ? ", station site " : "", st.icy_url);
     printf("result: %s%s%s\n", played ? "played" : "did not play",
            st.error[0] ? ", error: " : "", st.error);
     return played ? 0 : 1;

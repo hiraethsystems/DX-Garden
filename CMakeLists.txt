@@ -46,9 +46,11 @@ set(CORE_SOURCES
     core/config.c
     core/controls.c
     core/globe.c
+    core/hls.c
     core/icy.c
     core/library.c
     core/load_report.c
+    core/media_demux.c
     core/playlist.c
     core/ring_buffer.c
     core/search.c
@@ -58,6 +60,7 @@ set(CORE_SOURCES
     core/stream_info.c
     core/strmap.c
     core/text.c
+    core/track_info.c
     core/userlist.c
 )
 
@@ -169,6 +172,7 @@ else()
         tests/test_stationfiles.c
         tests/test_bidi.c
         tests/test_stream.c
+        tests/test_hls.c
     )
     target_include_directories(dxgarden_test PRIVATE core)
     target_compile_definitions(dxgarden_test PRIVATE
