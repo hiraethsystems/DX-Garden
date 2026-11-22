@@ -1253,3 +1253,507 @@ the AAC message, 404, HLS, and DNS retries with back-off. Fixes:
   https://github.com/hiraethsystems/DX-Garden/releases/tag/v0.9.0
 - Next build numbers continue from 31. `VERSION` stays 0.9.0 until the next
   release is decided (0.9.1 for fixes, 1.0.0 when the beta is done).
+
+## Windows port, W1: foundation and one stream (build 31, 2026-10-30)
+
+Branch `windows-port`. The desktop app lives in `desktop/` beside `vita/`,
+sharing `core/` unchanged. It is a Windows 11 app, but the same code builds
+on Linux, which is the development build: it can be run and screenshotted
+here before a Windows build goes out.
+
+**Toolchain.** Windows builds are cross-compiled on Linux with MinGW-w64
+(the `-posix` compilers), via `cmake/mingw-w64.cmake`. The MinGW runtime is
+linked statically, so `dxgarden.exe` imports only DLLs that come with
+Windows. Wine runs the Windows builds here for checks.
+
+**Libraries** (`tools/build_win_deps.sh`, official source releases, SHA-256
+pinned on first download, static, into `third_party/`, which git ignores):
+
+| Library | Version | Notes |
+|---|---|---|
+| SDL3 | 3.4.18 | Window, input, threads, audio (WASAPI on Windows). Built for Linux too, so both builds use the same SDL. |
+| libcurl | 8.23.0 | Schannel TLS: Windows' own certificate store, so no `cacert.pem` to ship or refresh. Revocation checks are off (`CURLSSLOPT_NO_REVOKE`), as they fail behind some proxies. |
+| mpg123 | 1.33.7 | |
+| FreeType, HarfBuzz, FriBidi | 2.15.0, 15.0.0, 1.0.18 | Built now, used from W2. |
+
+On Linux the development build takes curl and mpg123 from the distribution.
+
+**What changed from the Vita player** (`desktop/player.c`, a port of
+`vita/player.c`): Sony threads, mutexes and condition variables became SDL
+ones; the decode thread feeds an SDL audio stream on the default device
+instead of a SceAudio BGM port. SDL resamples, so a stream changing rate
+only changes the input format. The decoder keeps at most 250 ms queued at
+the device, so the stream buffer (not the device queue) holds the slack, as
+on the Vita. The network side, playlist following, ICY titles, error
+messages and reconnects are unchanged.
+
+**Data folder:** `%APPDATA%\DX Garden\` (Linux: `~/.local/share/DX Garden/`).
+W1 writes only the log there, `log-<version>-b<build>.txt` and
+`...-previous.txt`, as on the Vita.
+
+**Checked here** (Linux build, and the Windows build under Wine 10):
+
+- `core/` tests: 4,538 checks, 0 failures, on both.
+- MP3 over HTTPS (Radio Camarthenshire), a PLS playlist and plain HTTP
+  (SomaFM Groove Salad): connect in 1-2 s, titles shown, decoding under 1%
+  of real time.
+- An AAC stream gets the Vita's message, "This station streams AAC; DX
+  Garden only plays MP3" (AAC arrives in W5).
+
+**Headless check:** `dxgarden --play URL --seconds N` plays without a
+window, prints the status each second and exits 0 if it played.
+
+**Known issues**
+
+- `core/search.c:93` gives a `-Walloc-size-larger-than` warning with MinGW
+  GCC 14 at -O2. It is a false positive (`n` can't be negative there), and
+  `core/` is shared with the Vita, so it is left alone for now.
+- The .exe isn't code-signed, so Windows SmartScreen warns the first time
+  it is run ("More info", then "Run anyway"). Signing is for W8.
+
+## Decisions for the Windows globe (2026-10-30, for W4 and W5)
+
+Made by Aisling, before any of it is built:
+
+- **Imagery:** NASA Blue Marble (day) and Black Marble (night lights), both
+  public domain, ship with the app, so the globe works fully offline.
+  Optional online layers, off by default and cached on disk: Sentinel-2
+  cloudless (EOX, 10 m per pixel; licence terms to be checked before use)
+  and NASA GIBS daily imagery (today's clouds). These are the only live
+  lookups for imagery. Google, Bing and Esri imagery are ruled out by their
+  terms.
+- **Satellites:** orbit data (TLEs) for a short list (ISS, Tiangong,
+  Hubble) is fetched from CelesTrak at most once a day and cached. Stale
+  data is labelled with its age; with none, satellites are hidden.
+- **Download size:** about 300 MB with the imagery at 1 km per pixel, plus
+  an optional 500 m detail pack that unpacks into the data folder.
+- Sun, Moon, planets, stars and the grey line are computed offline.
+
+**Test builds:** each one goes to GitHub as a pre-release (tag
+`win-b<build>`) with the zip attached, for testing on a Windows PC.
+
+## Windows port, W2: the Windows 9x interface (build 32, 2026-10-30)
+
+**How it is drawn.** OpenGL 3.3 (`desktop/gl.c` loads it through SDL).
+The interface is drawn at "logical" pixel size into an offscreen buffer
+and scaled up by a whole number with no smoothing, so 1-pixel bevels stay
+exactly 1 pixel at 100%, 200% or 300% (View, Interface Size; Automatic
+picks from Windows' display scale: 125% stays 1x, 175% and up is 2x).
+Glyphs, icons and solid fills share one 2048x2048 atlas, so a frame is a
+few draw calls. The globe (W4) will draw at full resolution underneath.
+
+**Toolkit** (`desktop/ui.c`, `ui_widgets.c`): windows and menus are kept
+between frames; controls are immediate-mode, called from each window's
+draw function. It has: the main window's own 9x frame and title bar (no
+system frame; hit testing tells Windows where to drag and resize, so snap
+still works), a menu bar with access keys (Alt, F10, Alt+letter, arrows),
+submenus, check and radio items, a toolbar, child windows inside a
+workspace (move, resize, minimise, maximise, cascade, tile, z-order,
+modal dialogs), buttons (default, focus, disabled), check boxes, radio
+buttons, group boxes, edit boxes (caret, selection, clipboard, IME),
+drop-down lists, progress bars, sliders, scroll bars with auto-repeat,
+tabs, a status bar with size grip, tooltips, message boxes, a virtual
+list view (sortable, resizable columns) and a tree view with dotted lines.
+Tab moves the focus between controls.
+
+**Look.** The standard 9x colour scheme (grey 3D faces, navy selection,
+navy-to-blue title gradient, grey workspace). The art is our own: every
+icon is pixel art made for DX Garden in `desktop/icons.c`, from character
+grids or drawn in code. No Microsoft artwork, fonts or sounds.
+
+**Font.** Liberation Sans 11 px (8 point at 96 dpi), drawn without
+smoothing as 9x drew screen fonts; View, Smooth Screen Fonts turns
+smoothing on. Liberation Sans 2.1.5 (OFL 1.1, Arial's metrics) was the
+closest match among free fonts in a side-by-side test against Noto Sans;
+Noto stays as the fallback for everything else (Greek, Cyrillic and the
+other scripts the Vita app supports). Both ship in `fonts/` with their
+licences.
+
+**What W2 shows.** "Now Playing" (the W1 player: a test stream list, an
+address box, Play, Stop, volume) and a "Control Gallery" with every
+control, including a list and tree of the bundled 7,538 stations
+(double-click a station to play it). Settings are saved in `config.ini` in
+the data folder.
+
+**Checked here** with a new `--script` option that feeds clicks and keys
+and takes screenshots: menus, submenus, tabs, list and tree keyboard
+navigation, message boxes, minimise and maximise, font smoothing, at 100%
+and 200%, on the Linux build and the Windows build under Wine.
+
+**Known issues**
+
+- Dragging, snapping and resizing the main window couldn't be checked
+  here (the test display has no window manager). Needs a check on Windows.
+- No system menu yet (the title bar icon, Alt+Space).
+- The interface redraws every frame at the display's refresh rate. Cheap
+  on any GPU, but W7 should let it idle when nothing changes.
+- The gallery's station list sorts names with leading punctuation first
+  ("'tis Vloms", "(((EBM-Radio)))"); W3 will use core's folded sort keys.
+
+## Build 33: in-between interface sizes (2026-10-30)
+
+From the build 32 test: 100% was too small and 200% too big. View,
+Interface Size now has 100, 125, 150, 175, 200, 250 and 300%, plus
+Ctrl+Plus, Ctrl+Minus and Ctrl+0 (back to Automatic). Automatic now
+follows Windows' display scale to the nearest step (build 32 rounded 150%
+down to 100%). Whole-number sizes stay pixel-exact; the others use "sharp
+bilinear" scaling (enlarge by the next whole number without filtering,
+then shrink to size with filtering), so every line keeps the same width
+and edges are only slightly soft. `config.ini` now stores the size in
+percent; build 32's 1-3 values are read as 100-300.
+
+## Windows port, W3: the station library (build 34, 2026-10-30)
+
+Same data as the Vita app, in `%APPDATA%\DX Garden\`: `stations.txt`
+(created from the bundled list on first run, never overwritten),
+`import\` for M3U/PLS files, `favourites.txt`, `recent.txt`, `config.ini`.
+Loading goes through core's `station_source` interface and
+`library_build()`, unchanged; `desktop/data.c` and `desktop/fs.c` are ports
+of the Vita ones with paths set at run time.
+
+**Stations window** (Explorer style): a tree on the left (Favourites,
+Recently Played, search results, Countries with their towns, Genres,
+Unplaced) and a sortable list of stations on the right (Name, Town,
+Country, Genre, Notes), with a draggable divider. Double-click or Enter
+plays; right-click (or the Menu key) gives Play, Add to/Remove from
+Favourites, Copy Stream Address, Place This Station and Properties. Find
+(Ctrl+F) uses core's search over station, town and country names. Empty
+lists say why they are empty.
+
+**Commands** (menus Station and File, and shortcuts): Favourite (Ctrl+D),
+Properties (Alt+Enter), Place This Station, Random Place (Ctrl+R, picks a
+place, opens it in the tree and plays one of its stations), Add Station by
+Address (writes `import\added-by-url.m3u`, as on the Vita), Reload Station
+Files (F5), Open Data Folder, and View, Load Report. Placing an imported
+station appends it to `stations.txt` and opens its town in the tree.
+Recently played is saved 5 s after a change, as on the Vita.
+
+**Now Playing** shows the station's town (click it to show the town in
+Stations), a favourite star, the title, buffer, volume and an address box
+for playing any stream.
+
+**UTF-8 file names.** Core uses `fopen()`, which on Windows takes the
+ANSI code page, so a data folder under a user name with an accent (Grás)
+would fail to open. `desktop/dxgarden.manifest` sets the process code page
+to UTF-8 (Windows 10 1903 and later), which fixes every file call at once;
+checked under Wine with a folder named `Grás`. The manifest also declares
+per-monitor DPI awareness.
+
+**Country names in the bundled list** (also affects the Vita app's list):
+Radio Browser strips punctuation from some official names, so
+`tools/rb_to_stations.py`'s table missed them. Added: "Coted Ivoire" to
+Côte d'Ivoire, "Democratic Peoples Republic Of Korea" to North Korea,
+"Dutch Part Sint Maarten" to Sint Maarten, "Falkland Islands Malvinas" to
+"Falkland Islands (Malvinas)" (the ISO form, restored), "Reunion" to
+Réunion, and "and", "of", "the" in lower case inside names (Trinidad and
+Tobago). The same mapping was applied to `assets/stations/stations.txt`
+(54 lines; nothing else in the file changed). Existing `stations.txt`
+files are the user's and aren't touched.
+
+**Checked here** with scripted sessions on a fresh data folder (Linux, and
+the Windows build under Wine): first run, search, favourites, the
+right-click menu, Properties, the Load Report with a broken line, an M3U
+import placed through Place Station (the line written to `stations.txt`
+was checked), Random Place and Add Station.
+
+**Known issues**
+
+- The Control Gallery moved to Help, Control Gallery.
+- Dialog labels have no access keys yet (Alt+letter to jump to a field).
+- Favourites can't be reordered in the app yet (the file can be edited).
+- Sleep timer and dark screen (Vita M5) are planned for W7.
+
+## Windows port, W4: the globe (build 35, 2026-10-30)
+
+**Imagery.** NASA Blue Marble: Next Generation, July 2004, with topography
+and bathymetry (Reto Stöckli, NASA Earth Observatory; public domain).
+`tools/make_earth.py` downloads the eight 500 m pieces (433 MB, SHA-256
+pinned, cached in `third_party/earth/`) and cuts a pyramid of 512 px JPEG
+tiles in plate carrée layout, levels 0-5: the whole Earth on two tiles up
+to 32768 x 16384 px, about 1.2 km per pixel at the equator. The tiles go
+in one file, `earth-day.pack` (2,730 tiles, 71 MB), with an index at the
+end, so Windows doesn't have to unzip and scan thousands of small files.
+The pack isn't in git; CMake copies it next to the program when it exists.
+That's well under the 300 MB planned, so a 500 m "detail pack" (level 6)
+can come later without making the download large.
+
+**Renderer** (`desktop/earth.c`): a perspective camera straight above a
+point, at an altitude from 8 km to 60,000 km. Each frame a quadtree picks
+the tiles that are on screen (inside the horizon and the view's corners)
+and whose texels would be at most ~1.2 px; each is drawn as a curved grid
+(32 segments for big tiles, 16 for small) whose vertices are placed on the
+sphere in the vertex shader, camera-relative so floats stay precise near
+the ground. Two loader threads read and decode tiles (stb_image, public
+domain, vendored as `desktop/stb_image.h` at nothings/stb 003501f) and up
+to 8 are uploaded per frame, with mipmaps and anisotropic filtering; 384
+are kept on the GPU, least recently drawn first out, level 0 always kept.
+A tile still loading is drawn from its nearest loaded ancestor, so the
+view sharpens rather than having holes. The atmosphere is a glow from each
+pixel's closest approach to the Earth, plus haze towards the edge of the
+disc. Place dots are smooth (drawn at full resolution with a distance
+function), slightly bigger for busier places.
+
+**How it fits the interface.** The globe draws at the window's full
+resolution, not the interface's logical pixels, so it stays sharp at 150%
+or 200%: the interface punches a transparent hole for it (`draw_underlay`)
+and is composited over it with premultiplied alpha. Windows, menus, the
+crosshair and the text over the globe sit on top as normal.
+
+**Globe window** (`desktop/globe_view.c`): drag to turn (the point under
+the mouse stays under it), with coasting; wheel or Page Up/Down to zoom;
+double-click to fly to a point; arrow keys pan; Home shows the whole
+Earth. The Vita's crosshair rule is kept, using core's dwell timer: a place
+under the crosshair for 0.8 s starts playing (an amber ring shows the
+wait), Enter plays it at once, and clicking a dot turns to it and plays
+it. View, Play Place Under Crosshair turns the automatic part off. The
+panel underneath shows the place and its country, "station n of N" with
+arrows to step through them, and zoom buttons. Playing a station from the
+Stations window or Random Place flies the globe there. The camera is saved
+in `config.ini` ([globe]).
+
+**Checked here** (Linux build, and the Windows build under Wine): zoomed
+from the whole Earth (with the atmosphere) down to 750 km over Wales;
+clicking Manchester's dot flew there and played Bolton FM; dragging and
+coasting; Random Place flying to Chiang Mai.
+
+**Known issues**
+
+- No day/night, grey line, stars, Moon or satellites yet: that's W5.
+- The 1.2 km imagery gets soft below about 100 km altitude; the 500 m
+  detail pack and the optional online layers will help there.
+- Software rendering here is slow, so real frame rates are unknown until
+  tested on Windows with a real GPU.
+
+## Build 36: flicker fix, globe fills the window (2026-10-30)
+
+From the build 35 test.
+
+**Flicker while moving the globe.** New imagery tiles were uploaded while
+the interface was being drawn. Uploading binds the tile's texture, and
+interface drawing still waiting in the batch then went to the GPU with the
+tile bound instead of the interface's atlas, so whole windows came out
+black or tile-coloured for a frame. It showed in any window drawn after
+the globe (any window clicked since start). Reproduced here: with build 35
+code and the Stations window raised, frames during a zoom showed the
+window black and smeared; with the fix, the window's pixels are identical
+across those frames. Two changes: uploads happen in the globe's own pass
+(`earth_update()` in the underlay), and the interface binds its atlas on
+every batch, so nothing else can disturb it. The OS window title is also
+only set when it changes.
+
+**Layout.** The globe now fills the workspace with no frame, like a desktop
+background (a new `UIW_BACKGROUND` window kind: kept behind the others,
+frameless when maximised), with Now Playing and Stations floating over its
+right side. View, Globe Fills Window turns it back into an ordinary window
+on the left; the choice is saved.
+
+## Linux port, L1: a proper native Linux build (build 37, 2026-11-11)
+
+The Linux port starts from the Windows port (`linux-port` branch, from
+`windows-port`). The desktop app was already SDL3 code that built on Linux
+as a development build; L1 makes that build a real Linux app. The plan is
+for Linux to replace the Windows build eventually; until then both build
+from the same code, and Windows behaves as before.
+
+**Title bar.** On Linux the desktop draws the title bar and border
+(`DXG_NATIVE_FRAME` in `desktop/app.h`): the window isn't borderless, there
+is no hit testing, and the menu bar starts at the top of the window. The
+window title is still "Station - DX Garden". The 9x frame stays on Windows.
+KDE Plasma draws the title bar itself (server-side decorations, checked in
+a Wayland trace: KWin answers mode 2). GNOME on Wayland leaves title bars
+to the app, so SDL3 is built with libdecor, which draws one there.
+
+**KDE Plasma.** Checked on Plasma 6.3.6 (Wayland, screens at 160% and
+100%, NVIDIA). SDL 3.4 runs the app through XWayland here by default
+(SDL picks X11 on compositors without the newer frame-pacing protocols);
+`SDL_VIDEO_DRIVER=wayland` runs it natively, and both work:
+- The app ID / X11 window class is `club.hiraeth.dxgarden`, the same as the
+  menu entry's file name and `StartupWMClass`, so Plasma's task manager
+  groups the window under the menu entry and its icon.
+- Under X11 window sizes are in pixels, so on the 160% screen the window
+  opened at 1024 x 720 pixels, under two thirds of the intended size, and
+  the Stations window came out squashed. The starting size is now scaled
+  by the screen's scale (within 90% of the usable area). The interface
+  scale itself was already right in both (150%, the nearest step to 160%).
+- X11 title bars and Alt+Tab want the icon on the window, so the app sets
+  it (`share/club.hiraeth.dxgarden/icon.png`, loaded with SDL 3.4's PNG loader).
+- The first layout gives Stations at least its minimum height; in a short
+  window Now Playing shrinks first.
+
+**Folders.** Data moved from `~/.local/share/DX Garden/` to
+`$XDG_DATA_HOME/dxgarden/` (normally `~/.local/share/dxgarden/`), matching
+the internal name. On start, an old `DX Garden` folder is renamed to the
+new name if the new one doesn't exist yet, so settings, favourites and
+station files carry over. The app's own files (fonts, bundled
+`stations.txt`, `earth-day.pack`) are found next to the program when
+`fonts/` is there (the build folder), otherwise in `../share/club.hiraeth.dxgarden/`
+from it: an installed copy, and later the AppImage. The first try used
+`share/dxgarden/`, but with `--prefix ~/.local` that is the data folder
+itself, so the install put the bundled list where the user's
+`stations.txt` goes and a reinstall would have overwritten it. Found on
+the first real install, before the app had run; the folder is now named
+after the app ID so the two can't meet.
+
+**Install.** `cmake --install build-linux --prefix ~/.local` puts in
+`bin/dxgarden`, `share/club.hiraeth.dxgarden/`, a menu entry and a 128 px icon, both
+named after the app ID SDL gives the desktop (`club.hiraeth.dxgarden`), so
+the window and its menu entry match. The installed menu entry runs the
+program by its full path (written at install time): Plasma on Debian
+doesn't have `~/.local/bin` on its PATH, and the first real install failed
+to launch with "Could not find the program 'dxgarden'". The icon is the Vita bubble
+(`art/livearea/icon0.png`) cropped to a circle, in `desktop/linux/`.
+
+**Libraries.** SDL3 3.4.18 is still built from source
+(`tools/build_win_deps.sh linux`), so Linux and Windows use the same SDL;
+Debian 13 only has 3.2.10. curl, mpg123, FreeType, HarfBuzz and FriBidi
+come from the distribution's `-dev` packages. The AppImage (L3) will bundle
+them.
+
+**Checked here** (Debian 13, KDE Plasma 6.3.6 on Wayland, NVIDIA RTX
+4060): the build and the 4538 core checks pass; an install into a test
+prefix starts with assets from `share/club.hiraeth.dxgarden/`; an old `DX Garden` folder
+with a favourite in it was moved and the favourite loaded; screenshots
+under X11 (the default) and native Wayland show the menu bar at the top, no
+9x title bar, and the same layout at 150%; the X11 window has its class and
+icon; Deutschlandfunk (HTTPS MP3) played through PipeWire.
+
+**Not checked:** the title bar itself (screenshots only show the window's
+contents), the menu entry in Plasma's launcher after a real install, GNOME
+(no GNOME machine here), and the Windows build (its libraries aren't built
+on this machine yet). The interface still has the 9x look; that's L2.
+
+**Known issues**
+
+- `config.ini` gets a second `[ui]` header when a key is added to a section
+  after another section was written (the file reads back correctly). In
+  `core/config.c`; harmless, to tidy later.
+
+## Linux port, L2a: a choice of looks (build 38, 2026-11-11)
+
+From the build 37 test: the 9x look stays, and becomes one of three
+(View, Look; `config.ini` `[ui] look = classic|system|breeze|adwaita`):
+
+- **Classic**, the default: the Windows 9x look, unchanged. A screenshot of
+  the main window is pixel-identical to build 37's.
+- **System**: Breeze on KDE Plasma (`XDG_CURRENT_DESKTOP` contains KDE),
+  Adwaita elsewhere on Linux.
+- **Breeze (KDE)** and **Adwaita (GNOME)**, to pick one directly.
+
+Windows has only Classic, so the Look menu isn't there.
+
+**How.** The toolkit's fixed 9x colours became a palette (`desktop/theme.c`)
+that the `UI_*` names now read from, so every window, list and panel
+follows the look without changes of its own. The bevel styles, title bars,
+menus and each control have a flat path: one-pixel frames (corner pixels
+left out, which reads as slightly rounded), solid title bars, tinted hover,
+the accent colour for focus, ticks, sliders and progress, round radio
+buttons and slider handles, row selection across the whole row, and tree
+arrows instead of dotted lines and boxes. Disabled text is plain grey
+instead of embossed. The crosshair and captions over the globe stay black
+and white in every look.
+
+**Breeze's colours** come from the KDE colour scheme in use, read from
+`~/.config/kdeglobals` over Plasma 6's defaults layer
+(`~/.config/kdedefaults/kdeglobals`), first file wins, as KConfig does:
+window, view, button, selection, tooltip and title bar colours, and the
+focus and hover decoration colours (the accent). Keys a scheme leaves out
+come from Breeze or Breeze Dark, whichever is nearer. The scheme is
+re-read within a second of either file changing, so switching colour
+schemes in System Settings changes the app while it runs.
+
+**Adwaita's colours** are libadwaita's, light or dark as the system says
+(SDL reads the desktop portal's colour-scheme setting), re-checked every
+second. GNOME's accent colour setting isn't read yet: the accent is
+Adwaita's blue.
+
+**Checked here** (KDE Plasma 6.3.6, Wayland, Sweet-Ambar-Blue): Classic
+main window identical to build 37; Breeze picks up Sweet-Ambar-Blue's
+colours and name; a test kdeglobals with Breeze Light colours gives a
+light Breeze; Adwaita dark; the Control Gallery's controls and ranges
+tabs, the main window, the menus, in each flat look; core checks pass.
+
+**Not checked:** Adwaita light (this desktop's system setting is dark),
+GNOME itself, and changing the KDE scheme while the app runs.
+
+**Known issues**
+
+- The colour icons (toolbar, folders, title bar icons) are the 9x art.
+  Some have dark outlines that are hard to see on dark schemes (the
+  magnifier, the town, the gear). New icons would be a separate piece.
+- Flat looks still use the 9x sizes and font (Liberation Sans 11 px,
+  16 px rows), and the interface is still drawn small and scaled up, so at
+  150% it is slightly soft. That's L2b: drawing at the screen's resolution
+  and Breeze-like spacing.
+
+## Linux port, L3: the AppImage (build 39, 2026-11-11)
+
+`tools/make_appimage.sh` builds `dist/dxgarden-<version>-b<build>-x86_64.AppImage`
+(`--release`: without the build number), about 81 MB, almost all of it the
+globe's imagery. One file: make it executable and run it.
+
+**Static libraries.** Debian's libcurl pulls in about 40 libraries
+(Kerberos, LDAP, RTMP, GnuTLS, libidn2 and more) and has Debian's
+certificate path built in, so copying it into the image would be heavy and
+would break HTTPS on Fedora. Instead `tools/build_win_deps.sh linux-static`
+builds, into `third_party/linux-static/`, the same versions the Windows
+build uses: curl 8.23.0 (HTTP and HTTPS only), mpg123 1.33.7, FreeType
+2.15.0, HarfBuzz 15.0.0 and FriBidi 1.0.18, plus mbedTLS 3.6.7 (the LTS
+branch; the Vita build also uses mbedTLS) for curl's TLS. With
+`-DDXG_STATIC_DEPS=ON` the program links these and the C++ runtime
+statically, and needs only `libc` and `libm`; SDL loads the desktop's
+graphics, sound and input libraries itself when it starts. The development
+build keeps using the distribution's packages.
+
+**Certificates.** The static curl has no certificate path built in. At
+start the player looks for the system's bundle: `$SSL_CERT_FILE`, then
+curl's own path if it has one (a distribution's curl), then the usual
+places (Debian/Ubuntu/Arch, Fedora/RHEL, openSUSE, Alpine), and as a last
+resort `/etc/ssl/certs/`. The log says which.
+
+**glibc.** Built on Debian 13, the program needs glibc 2.38 or later: Ubuntu
+24.04+, Fedora 39+, Debian 13+, current Arch and openSUSE Tumbleweed, but
+not Ubuntu 22.04, Debian 12 or Mint 21 (my decision, 2026-11-11: build on
+this machine rather than in an older container). The newer symbols come
+from glibc 2.38's headers (C23 `strtol`/`sscanf`, `strlcpy`, `fmod`), in
+our code and the libraries alike, so lowering the floor means building on
+an older system.
+
+**Tools.** appimagetool 1.9.1 and the AppImage runtime (type2-runtime
+20251108) are downloaded once into `third_party/appimage/`, at those fixed
+versions, and checked against the SHA-256 sums GitHub publishes for them.
+appimagetool runs extracted, so packing needs no FUSE. The image's menu
+entry runs `dxgarden` from inside the image; its files are in
+`usr/share/club.hiraeth.dxgarden/`, found the same way as an installed
+copy's.
+
+**Checked here** (Debian 13, KDE Plasma 6.3.6): the static program links
+only `libc` and `libm`; the AppImage plays Deutschlandfunk over HTTPS with
+its own curl and mbedTLS (certificates from Debian's bundle); with an empty
+`SSL_CERT_FILE` HTTPS is refused ("Can't check secure servers: no
+certificate store"), so verification is on; run with a bare environment, as
+a launcher starts it, it found its files inside the image, opened the
+window with OpenGL on the NVIDIA driver, and loaded the globe imagery.
+
+**Not checked:** other distributions (no containers or VMs here), so the
+certificate paths for Fedora and openSUSE are untested; a machine without
+FUSE (the image needs `fusermount3` to mount itself; otherwise run it with
+`--appimage-extract-and-run`).
+
+## Release 0.9.1 (beta), 2026-11-22
+
+- **Decision by the tester (2026-11-22):** release the Linux desktop app as
+  0.9.1 (minor is already 9, so a patch number is the only step before
+  1.0.0), AppImage only. The Vita app is unchanged since 0.9.0 (`core/` and
+  `vita/` are identical), so no new VPK; the README points Vita users at
+  `dxgarden-0.9.0.vpk`. The Windows build stays in the code but isn't
+  shipped (its libraries aren't built on this machine).
+- Build 40: build 39 plus the version bump and README changes (an
+  "Installing on Linux" section with menu-entry steps for the AppImage).
+  Built with `tools/make_appimage.sh --release`.
+- `linux-port` (which includes the Windows port commits, builds 31 to 36)
+  goes to `main` through a pull request, then `v0.9.1` is tagged on `main`
+  and published as Latest with the AppImage attached.
+- The bundled station list is the same 2026-10-21 Radio Browser snapshot
+  as 0.9.0, with 54 country labels spelled properly (for example Bosnia
+  and Herzegovina, Côte d'Ivoire, North Korea, Réunion, Trinidad and
+  Tobago); no stations added or removed.

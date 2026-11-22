@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=DX Garden
+GenericName=Radio Explorer
+Comment=Spin a globe and listen to live radio streams from your own station list
+Exec=dxgarden
+Icon=club.hiraeth.dxgarden
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=radio;stream;internet radio;globe;
+StartupWMClass=club.hiraeth.dxgarden
