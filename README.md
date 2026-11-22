@@ -23,8 +23,12 @@ with the desktop script (see "Building a station list" below).
 
 ## Status
 
-**Beta (0.9.0).** All the planned features are in and have been tested on a
+**Beta (0.9.1).** All the planned features are in and have been tested on a
 PCH-1000; this release is to collect reports from other Vitas before 1.0.
+
+0.9.1 adds a **desktop version for Linux**, as an AppImage, with the same
+station list on a globe (see "Installing on Linux" below). The Vita app
+hasn't changed since 0.9.0, so the current VPK is still `dxgarden-0.9.0.vpk`.
 
 | Browse by country, city or genre | The START menu |
 |---|---|
@@ -65,6 +69,59 @@ You need a PS Vita running HENkaku or ensō with
 To update, install the new VPK over the old one. Your `stations.txt`,
 favourites, recently played and settings are kept. If the bubble still
 shows old artwork, use VitaShell's "Refresh LiveArea" or reinstall.
+
+### Installing on Linux
+
+Download `dxgarden-0.9.1-x86_64.AppImage` from the release. It runs on
+most distributions from 2024 on: it needs glibc 2.38 or later (Ubuntu
+24.04+, Fedora 39+, Debian 13+, Arch, openSUSE Tumbleweed). So far it has
+only been tested on Debian 13 with KDE Plasma, so reports from other
+systems are welcome.
+
+To try it, make it executable and start it:
+
+```sh
+chmod +x dxgarden-0.9.1-x86_64.AppImage
+./dxgarden-0.9.1-x86_64.AppImage
+```
+
+To add it to your desktop's menu (KDE Plasma, GNOME and others), keep it
+somewhere permanent under a fixed name and write a menu entry and icon for
+it. Run this in the folder you downloaded it to:
+
+```sh
+mkdir -p ~/Applications ~/.local/share/applications ~/.local/share/icons/hicolor/128x128/apps
+mv dxgarden-0.9.1-x86_64.AppImage ~/Applications/dxgarden.AppImage
+chmod +x ~/Applications/dxgarden.AppImage
+(cd /tmp && ~/Applications/dxgarden.AppImage --appimage-extract club.hiraeth.dxgarden.png >/dev/null &&
+  mv squashfs-root/club.hiraeth.dxgarden.png ~/.local/share/icons/hicolor/128x128/apps/ &&
+  rm -r squashfs-root)
+cat > ~/.local/share/applications/club.hiraeth.dxgarden.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Name=DX Garden
+GenericName=Radio Explorer
+Comment=Spin a globe and listen to live radio streams from your own station list
+Exec="$HOME/Applications/dxgarden.AppImage"
+Icon=club.hiraeth.dxgarden
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=radio;stream;internet radio;globe;
+StartupWMClass=club.hiraeth.dxgarden
+EOF
+```
+
+DX Garden then shows up under Multimedia (on KDE, run `kbuildsycoca6` if it
+doesn't appear straight away). To update, replace
+`~/Applications/dxgarden.AppImage` with the new file. Your stations,
+favourites and settings live in `~/.local/share/dxgarden/` and are kept.
+If the system has no FUSE, start the AppImage with
+`--appimage-extract-and-run`.
+
+View, Look switches between the classic look and a flat one in your
+desktop's colours (your KDE colour scheme, or GNOME's light or dark style).
+On KDE Plasma it runs through XWayland by default (SDL's choice there); to
+run it as a native Wayland app, start it with `SDL_VIDEO_DRIVER=wayland`.
 
 ## Controls
 
@@ -132,15 +189,14 @@ python3 tools/make_earth.py --cache third_party/earth --out assets-build
 tools/make_appimage.sh
 ```
 
-To run it, make it executable (`chmod +x`) and start it. If the system has no
-FUSE, start it with `--appimage-extract-and-run`. Settings and station
-files go in `~/.local/share/dxgarden/`, as with an installed copy.
+`tools/make_appimage.sh --release` names it `dxgarden-<version>-x86_64.AppImage`
+instead, for a release. See "Installing on Linux" above for running it and
+adding it to the menu.
 
-### Desktop app on Linux (in progress)
+### Desktop app on Linux, from source
 
-A desktop version for Linux is being worked on in the `linux-port` branch.
-It plays the same station list on a globe, and is not finished yet. On
-Debian 13 it needs these packages:
+To build and install it for your user without an AppImage, on Debian 13
+you need these packages:
 
 ```sh
 sudo apt install cmake ninja-build meson curl libcurl4-openssl-dev libmpg123-dev \

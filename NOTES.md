@@ -1738,3 +1738,22 @@ window with OpenGL on the NVIDIA driver, and loaded the globe imagery.
 certificate paths for Fedora and openSUSE are untested; a machine without
 FUSE (the image needs `fusermount3` to mount itself; otherwise run it with
 `--appimage-extract-and-run`).
+
+## Release 0.9.1 (beta), 2026-11-22
+
+- **Decision by the tester (2026-11-22):** release the Linux desktop app as
+  0.9.1 (minor is already 9, so a patch number is the only step before
+  1.0.0), AppImage only. The Vita app is unchanged since 0.9.0 (`core/` and
+  `vita/` are identical), so no new VPK; the README points Vita users at
+  `dxgarden-0.9.0.vpk`. The Windows build stays in the code but isn't
+  shipped (its libraries aren't built on this machine).
+- Build 40: build 39 plus the version bump and README changes (an
+  "Installing on Linux" section with menu-entry steps for the AppImage).
+  Built with `tools/make_appimage.sh --release`.
+- `linux-port` (which includes the Windows port commits, builds 31 to 36)
+  goes to `main` through a pull request, then `v0.9.1` is tagged on `main`
+  and published as Latest with the AppImage attached.
+- The bundled station list is the same 2026-10-21 Radio Browser snapshot
+  as 0.9.0, with 54 country labels spelled properly (for example Bosnia
+  and Herzegovina, Côte d'Ivoire, North Korea, Réunion, Trinidad and
+  Tobago); no stations added or removed.
