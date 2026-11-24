@@ -1,12 +1,7 @@
 /*
- * The main window: the Windows 9x frame, menus, toolbar, status bar and the
- * workspace with the Stations, Now Playing and other child windows.
- *
- * On Windows the OS window has no system frame; DX Garden draws its own 9x
- * title bar and border, and tells Windows which parts drag and resize (hit
- * testing), so snapping and Aero-style dragging still work. On Linux
- * (DXG_NATIVE_FRAME) the desktop draws the title bar and border, and the
- * menu bar starts at the top of the window.
+ * The main window: menus, toolbar, status bar and the workspace with the
+ * Stations, Now Playing and other child windows. The desktop draws the
+ * title bar and border; the menu bar starts at the top of the window.
  */
 #include "app.h"
 
@@ -22,6 +17,8 @@
 #include "gl.h"
 #include "globe_view.h"
 #include "library_view.h"
+#include "list_dialog.h"
+#include "list_download.h"
 #include "log.h"
 #include "player.h"
 #include "track_info.h"
@@ -34,7 +31,7 @@
 enum {
     CMD_NONE,
     CMD_PLAY, CMD_STOP, CMD_EXIT, CMD_FAV, CMD_PROPS, CMD_PLACE, CMD_RANDOM, CMD_FIND,
-    CMD_ADD, CMD_RELOAD, CMD_OPEN_FOLDER, CMD_REPORT, CMD_WEBSITE,
+    CMD_ADD, CMD_RELOAD, CMD_OPEN_FOLDER, CMD_REPORT, CMD_WEBSITE, CMD_DOWNLOAD,
     CMD_TOOLBAR, CMD_STATUSBAR, CMD_SMOOTH, CMD_SCALE_AUTO, CMD_ZOOM_IN, CMD_ZOOM_OUT,
     CMD_CASCADE, CMD_TILE, CMD_SHOW_STATIONS, CMD_SHOW_PLAYER, CMD_GALLERY, CMD_ABOUT,
     CMD_SHOW_GLOBE, CMD_AUTO_TUNE, CMD_GLOBE_FILL,
@@ -55,8 +52,7 @@ static struct {
     int volume, muted;
     int quit;
 
-    /* Layout of the last frame, for hit testing (logical pixels). */
-    int frame_b, caption_y, title_buttons_x;
+    /* The interface scale, and pixels per SDL point, of the last frame. */
     float cur_scale, px_per_point;
 
     player_status st;
@@ -353,10 +349,24 @@ static void about_window(ui_window *w, rect c, void *ud)
     (void)ud;
     ui_icon(ICON_APP32, c.x + 16, c.y + 16, 0);
     draw_text(x, c.y + 30, UI_FONT_BIG, 1, UI_TEXT, "DX Garden");
-    snprintf(line, sizeof(line), "Version %s (build %s) for Windows", DXG_VERSION, DXG_BUILD);
+    snprintf(line, sizeof(line), "Version %s (build %s) for Linux", DXG_VERSION, DXG_BUILD);
     ui_label(x, c.y + 40, line);
     ui_label(x, c.y + 56, "A radio player and explorer.");
-    ui_text_wrap(x, c.y + 80, c.w - x + c.x - 16, UI_TEXT,
+    ui_label(x, c.y + 78, "By Aisling de Gr\xC3\xA1s");
+    {
+        /* The email address as a link: opens the desktop's mail program. */
+        static const char email[] = "aisling@hiraeth.systems";
+        unsigned col = UI_FLAT ? UI_PAL.accent : COL(0, 0, 0xFF);
+        int ew = draw_text_width(UI_FONT, 0, email), ey = c.y + 94;
+        draw_text(x, ey + 10, UI_FONT, 0, col, email);
+        if (ui_hover(x, ey, ew, 16)) {
+            draw_rect(x, ey + 12, ew, 1, col);
+            UI.cursor = SDL_SYSTEM_CURSOR_POINTER;
+            if (UI.pressed[0] && !SDL_OpenURL("mailto:aisling@hiraeth.systems"))
+                LOG("app: could not open mailto: %s", SDL_GetError());
+        }
+    }
+    ui_text_wrap(x, c.y + 120, c.w - x + c.x - 16, UI_TEXT,
                  "Licensed under the GNU GPL v3. The interface art is DX Garden's own, in "
                  "the style of Windows 9x; no Microsoft artwork, fonts or sounds are used. "
                  "Text in Liberation Sans and Noto (SIL Open Font License). The bundled "
@@ -375,6 +385,7 @@ static void about_window(ui_window *w, rect c, void *ud)
 static ui_menu_item file_items[] = {
     { "&Add Station by Address...", NULL, CMD_ADD, 0, NULL },
     { "&Reload Station Files", "F5", CMD_RELOAD, 0, NULL },
+    { "&Download Station List...", NULL, CMD_DOWNLOAD, 0, NULL },
     { "&Open Data Folder", NULL, CMD_OPEN_FOLDER, 0, NULL },
     { NULL, NULL, 0, MI_SEPARATOR, NULL },
     { "E&xit", "Alt+F4", CMD_EXIT, 0, NULL },
@@ -442,7 +453,7 @@ static ui_menu_item help_items[] = {
     { "&About DX Garden", NULL, CMD_ABOUT, 0, NULL },
 };
 static ui_menu menus[] = {
-    { file_items, 5 }, { station_items, 10 }, { view_items, 11 }, { window_items, 6 },
+    { file_items, 6 }, { station_items, 10 }, { view_items, 11 }, { window_items, 6 },
     { help_items, 3 },
 };
 static const char *menu_labels[] = { "&File", "&Station", "&View", "&Window", "&Help" };
@@ -456,18 +467,6 @@ static void set_item_flags(ui_menu *m, int cmd, unsigned flags)
             m->items[i].flags = flags;
 }
 
-/* Windows has only the Classic look, so no Look menu. */
-static void drop_look_menu(void)
-{
-    ui_menu *m = &menus[2];
-    int i;
-    for (i = 0; i < m->n; i++)
-        if (m->items[i].sub == &look_menu) {
-            memmove(&m->items[i], &m->items[i + 1], sizeof(m->items[0]) * (size_t)(m->n - i - 1));
-            m->n--;
-            return;
-        }
-}
 
 static void update_menu_checks(void)
 {
@@ -542,6 +541,7 @@ static void command(int cmd)
     case CMD_ADD: libview_add_by_address(); break;
     case CMD_RELOAD: reload_library(); break;
     case CMD_OPEN_FOLDER: fs_open_folder(PATHS.data); break;
+    case CMD_DOWNLOAD: listdlg_open(); break;
     case CMD_REPORT:
         if (!libview_report_window->open)
             ui_window_center(libview_report_window);
@@ -595,7 +595,7 @@ static void command(int cmd)
 
 /* ---- the main window ---- */
 
-/* Windows' display scale for the monitor the window is on, to the nearest
+/* The display scale for the monitor the window is on, to the nearest
  * size on the menu. */
 static float auto_scale(void)
 {
@@ -607,36 +607,6 @@ static float auto_scale(void)
     return SCALES[best] / 100.0f;
 }
 
-static SDL_HitTestResult SDLCALL hit_test(SDL_Window *win, const SDL_Point *pt, void *ud)
-{
-    float sc = A.cur_scale > 0 ? A.cur_scale : 1.0f, k = A.px_per_point / sc;
-    int x = (int)(pt->x * k), y = (int)(pt->y * k), w, h, b = A.frame_b;
-    (void)ud;
-    SDL_GetWindowSizeInPixels(win, &w, &h);
-    w = (int)(w / sc);
-    h = (int)(h / sc);
-    if (b) {
-        int top = y < b, bottom = y >= h - b, left = x < b + 8, right = x >= w - b - 8;
-        int edge_l = x < b, edge_r = x >= w - b;
-        if (top && left) return SDL_HITTEST_RESIZE_TOPLEFT;
-        if (top && right) return SDL_HITTEST_RESIZE_TOPRIGHT;
-        if (bottom && left) return SDL_HITTEST_RESIZE_BOTTOMLEFT;
-        if (bottom && right) return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
-        if (top) return SDL_HITTEST_RESIZE_TOP;
-        if (bottom) return SDL_HITTEST_RESIZE_BOTTOM;
-        if (edge_l) return SDL_HITTEST_RESIZE_LEFT;
-        if (edge_r) return SDL_HITTEST_RESIZE_RIGHT;
-    }
-    /* The status bar's size grip. */
-    if (A.show_status && !(SDL_GetWindowFlags(win) & SDL_WINDOW_MAXIMIZED) && x >= w - b - 14 &&
-        y >= h - b - 14)
-        return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
-    if (y >= A.caption_y && y < A.caption_y + UI_CAPTION_H && x >= b + 20 &&
-        x < A.title_buttons_x && !UI.popup_open)
-        return SDL_HITTEST_DRAGGABLE;
-    return SDL_HITTEST_NORMAL;
-}
-
 int app_init(SDL_Window *win, const char *assets, const char *data)
 {
     char fonts[1024];
@@ -645,23 +615,13 @@ int app_init(SDL_Window *win, const char *assets, const char *data)
     memset(&A, 0, sizeof(A));
     A.win = win;
     theme_set(LOOK_SET_CLASSIC); /* until the settings are read */
-#ifdef _WIN32
-    drop_look_menu();
-#else
-    (void)drop_look_menu;
-#endif
     A.playing_si = -1;
     snprintf(fonts, sizeof(fonts), "%sfonts%c", assets, assets[strlen(assets) - 1]);
     if (font_init(fonts) != 0) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "DX Garden",
-#ifdef _WIN32
-                                 "The fonts are missing. Put the fonts folder from the zip next to "
-                                 "dxgarden.exe.",
-#else
                                  "The fonts are missing: DX Garden looks for them in "
                                  "share/club.hiraeth.dxgarden/fonts/ next to its bin/ folder. Reinstalling "
                                  "may help.",
-#endif
                                  win);
         return -1;
     }
@@ -690,7 +650,7 @@ int app_init(SDL_Window *win, const char *assets, const char *data)
                                 UIW_RESIZABLE, gallery_window, NULL);
     A.w_gallery->min_w = 450;
     A.w_gallery->min_h = 300;
-    A.w_about = ui_window_new("About DX Garden", ICON_APP16, 0, 0, 400, 250,
+    A.w_about = ui_window_new("About DX Garden", ICON_APP16, 0, 0, 400, 290,
                               UIW_DIALOG | UIW_MODAL, about_window, NULL);
     A.w_globe = ui_window_new("Globe", ICON_GLOBE, 8, 8, 640, 480,
                               UIW_RESIZABLE | UIW_BACKGROUND | UIW_NO_CLOSE, globeview_draw, NULL);
@@ -698,6 +658,7 @@ int app_init(SDL_Window *win, const char *assets, const char *data)
     A.w_globe->min_w = 320;
     A.w_globe->min_h = 240;
     libview_init(&A.d, &hooks);
+    listdlg_init(reload_library, status);
     {
         char pack[1100];
         globeview_hooks gh = { play_station, playing_station };
@@ -708,8 +669,6 @@ int app_init(SDL_Window *win, const char *assets, const char *data)
     ui_window_show(A.w_player);
     ui_window_show(A.w_globe);
 
-    if (!DXG_NATIVE_FRAME)
-        SDL_SetWindowHitTest(win, hit_test, NULL);
     if (A.d.report.errors) {
         char msg[200];
         snprintf(msg, sizeof(msg), "%d line%s in your station files %s skipped: see View, "
@@ -814,13 +773,12 @@ static void toolbar(int x, int y, int w)
 
 int app_frame(void)
 {
-    int pw, ph, ww, wh, w, h, b, maximized, y, tb, cmd;
+    int pw, ph, ww, wh, w, h, b, y, cmd;
     const char *panes[3];
     int widths[3];
     char pane_state[300], pane_fill[64];
     uint64_t now = SDL_GetTicks();
 
-    maximized = (SDL_GetWindowFlags(A.win) & SDL_WINDOW_MAXIMIZED) != 0;
     SDL_GetWindowSizeInPixels(A.win, &pw, &ph);
     SDL_GetWindowSize(A.win, &ww, &wh);
     A.px_per_point = ww > 0 ? (float)pw / (float)ww : 1.0f;
@@ -850,15 +808,9 @@ int app_frame(void)
     ui_begin();
     update_menu_checks();
 
-    b = (maximized || DXG_NATIVE_FRAME) ? 0 : UI_FRAME;
-    A.frame_b = b;
+    b = 0; /* the desktop draws the window's border */
     draw_rect(0, 0, w, h, UI_FACE);
-    if (b)
-        ui_bevel(0, 0, w, h, BEVEL_WINDOW);
-    A.caption_y = b;
-    A.title_buttons_x = w - b - 2 - 16 * 3 - 2;
-    tb = 0;
-    if (DXG_NATIVE_FRAME) {
+    {
         /* The desktop's title bar: "Station - DX Garden". */
         char t[600];
         if (A.playing_name[0] && A.st.state != PLAYER_IDLE)
@@ -869,31 +821,9 @@ int app_frame(void)
             snprintf(A.os_title, sizeof(A.os_title), "%s", t);
             SDL_SetWindowTitle(A.win, t);
         }
-    } else {
-        /* "Station - DX Garden", as 9x apps named their documents. */
-        char t[600];
-        if (A.playing_name[0] && A.st.state != PLAYER_IDLE)
-            snprintf(t, sizeof(t), "%s - DX Garden", A.playing_name);
-        else
-            snprintf(t, sizeof(t), "DX Garden");
-        tb = ui_title_bar(0xFACE, b, b, w - 2 * b, t, ICON_APP16,
-                          (SDL_GetWindowFlags(A.win) & SDL_WINDOW_INPUT_FOCUS) != 0,
-                          UI_TB_MIN | UI_TB_MAX | UI_TB_CLOSE, maximized);
-        /* Only on a change: setting it makes Windows repaint the taskbar
-         * button. */
-        if (strcmp(t, A.os_title) != 0) {
-            snprintf(A.os_title, sizeof(A.os_title), "%s", t);
-            SDL_SetWindowTitle(A.win, t);
-        }
     }
-    if (tb == UI_TB_CLOSE)
-        A.quit = 1;
-    else if (tb == UI_TB_MIN)
-        SDL_MinimizeWindow(A.win);
-    else if (tb == UI_TB_MAX)
-        maximized ? SDL_RestoreWindow(A.win) : SDL_MaximizeWindow(A.win);
 
-    y = DXG_NATIVE_FRAME ? 0 : b + UI_CAPTION_H + 1;
+    y = 0;
     cmd = ui_menu_bar(b, y, w - 2 * b, menu_labels, menus, 5);
     y += UI_MENU_H + 1;
     if (A.show_toolbar) {
@@ -984,6 +914,7 @@ void app_shutdown(void)
     int i;
     if (A.recent_dirty)
         data_save_recent(&A.d);
+    list_download_shutdown();
     globeview_shutdown();
     save_settings();
     for (i = 0; i < SDL_SYSTEM_CURSOR_COUNT; i++)

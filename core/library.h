@@ -35,6 +35,7 @@ typedef struct {
     int n_stations;
     int cap;
     int next_same_key; /* chain of places sharing `key`, -1 at the end */
+    int country_wide;  /* city "Country-wide": stations placed only by country */
 } place;
 
 /* A named group of indices: a country's places or a genre's stations. */

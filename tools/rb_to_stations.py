@@ -61,11 +61,12 @@ TIMEOUT_S = 30
 RETRIES = 4  # per server, waiting 2, 4 and 8 s between tries
 DEFAULT_MAX = 2000
 DEFAULT_CITY_KM = 30.0
-MAX_FILE_BYTES = 8 * 1024 * 1024  # the app's stations.txt limit
+DEFAULT_MAX_MB = 8  # the Vita app's stations.txt limit; the desktop app takes 32
 
 # Codec names as Radio Browser reports them, keyed by our option names.
 # "ogg" covers Ogg Vorbis (and some Ogg Opus) streams.
-CODECS = {"mp3": "MP3", "aac": "AAC", "aac+": "AAC+", "ogg": "OGG", "opus": "OPUS"}
+CODECS = {"mp3": "MP3", "aac": "AAC", "aac+": "AAC+", "ogg": "OGG", "opus": "OPUS",
+          "flac": "FLAC"}
 
 # Radio Browser's long official country names, shortened for the screen.
 # Keys are lower case, without a leading "The ".
@@ -146,12 +147,119 @@ TERRITORY_TOWN_KM = 15.0
 CRIMEA_BOX = (44.3, 32.4, 46.2, 36.65)  # lat0, lon0, lat1, lon1
 GAZA_MAX_LON = 34.6  # Gaza lies west of this, the West Bank east of it
 
+# Stations without coordinates (--without-coords) are placed, in order:
+# at another stream of the same station (same name and country) that has
+# a position; at the town or region Radio Browser gives as its region; at
+# a town of NOCOORD_TOWN_POP or more in the station's name; at a region (or
+# a UK county) named in the station's name or tags; otherwise in one
+# "Country-wide" place per country, at Natural Earth's label point (the
+# project owner's decision, 2026-11-22). Regions are GeoNames' admin1 areas
+# (admin1CodesASCII.txt), placed at their capital.
+COUNTRY_WIDE = "Country-wide"
+NOCOORD_TOWN_POP = 20000
+ALT_NAME_POP = 15000  # towns this big are also found by their other names
+REGION_TOWN_WINS_POP = 1000000  # "New York": the city, not the state
+# Towns that are also everyday words in station names.
+TOWN_STOPWORDS = {"reading", "sale", "deal", "march", "bath", "hyde", "mobile", "normal",
+                  "independence", "paradise", "surprise", "spring", "orange", "phoenix",
+                  "hope", "unity", "liberty", "harmony", "eden", "radio", "music", "classic",
+                  "gold", "love", "smooth", "magic", "star", "sun", "kiss", "heart", "energy",
+                  "capital", "central", "best", "good", "nice", "salsa", "jazz", "rock",
+                  "victoria", "florence", "mix", "hit", "hits", "top", "rio", "santa", "san",
+                  "nova", "vida", "fe", "paz", "esperanza", "union"}
+# Words that make a region name too vague to find in a station's name.
+REGION_GENERIC = {"central", "centre", "center", "north", "northern", "south", "southern",
+                  "east", "eastern", "west", "western", "capital", "coast", "island", "islands",
+                  "region", "district", "national", "metropolitan", "city", "upper", "lower",
+                  "new", "greater", "federal", "territory", "valley", "lake", "river", "sea",
+                  "the", "of", "and", "province", "state", "county"}
+# Regions as Radio Browser's users write them: local names, abbreviations
+# and old spellings, by country, as GeoNames admin1 codes.
+REGION_ALIASES = {
+    "AU": {"nsw": "02", "vic": "07", "qld": "04", "wa": "08", "sa": "05", "tas": "06",
+           "nt": "03", "act": "01"},
+    "AT": {"wien": "09", "tirol": "07", "steiermark": "06", "oberosterreich": "04",
+           "niederosterreich": "03", "karnten": "02"},
+    "BE": {"bruxelles": "BRU", "brussel": "BRU", "brussels": "BRU", "wallonie": "WAL",
+           "vlaanderen": "VLG"},
+    "BR": {"ac": "01", "al": "02", "ap": "03", "am": "04", "ba": "05", "ce": "06", "df": "07",
+           "es": "08", "go": "29", "ma": "13", "mt": "14", "ms": "11", "mg": "15", "pa": "16",
+           "pb": "17", "pr": "18", "pe": "30", "pi": "20", "rj": "21", "rn": "22", "rs": "23",
+           "ro": "24", "rr": "25", "sc": "26", "sp": "27", "se": "28", "to": "31"},
+    "CA": {"ab": "01", "bc": "02", "mb": "03", "nb": "04", "nl": "05", "ns": "07", "on": "08",
+           "pe": "09", "pei": "09", "qc": "10", "que": "10", "quebec": "10", "sk": "11",
+           "yt": "12", "nt": "13", "nu": "14", "newfoundland": "05"},
+    "CH": {"zurich": "ZH", "geneve": "GE", "genf": "GE", "luzern": "LU", "graubunden": "GR",
+           "st gallen": "SG", "basel": "BS", "wallis": "VS", "tessin": "TI", "waadt": "VD"},
+    "CN": {"kiangsu": "04", "hopei": "10", "shantung": "25", "chekiang": "02", "szechuan": "32",
+           "szechwan": "32", "kwangtung": "30", "sinkiang": "13", "anhwei": "01",
+           "kansu": "15", "shansi": "24", "hupei": "12", "hupeh": "12", "fukien": "07",
+           "kiangsi": "03", "kwangsi": "16", "shensi": "26", "honan": "09", "hunan": "11",
+           "kweichow": "18", "yunnan": "29", "kirin": "05", "heilungkiang": "08",
+           "tsinghai": "06", "peking": "22", "inner mongolia": "20", "nei mongol": "20"},
+    "DE": {"bayern": "02", "hessen": "05", "nordrhein westfalen": "07", "nrw": "07",
+           "niedersachsen": "06", "sachsen": "13", "sachsen anhalt": "14", "thuringen": "15",
+           "baden wurttemberg": "01", "bw": "01", "rheinland pfalz": "08", "berlin": "16",
+           "brandenburg": "11", "mecklenburg vorpommern": "12", "saarland": "09",
+           "schleswig holstein": "10", "hamburg": "04", "bremen": "03", "sassonia": "13",
+           "saxe": "13", "baviera": "02", "rhineland palatinate": "08"},
+    "ES": {"catalunya": "56", "cataluna": "56", "andalucia": "51", "euskadi": "59",
+           "pais vasco": "59", "comunidad de madrid": "29", "comunitat valenciana": "60",
+           "comunidad valenciana": "60", "castilla y leon": "55", "castilla la mancha": "54",
+           "islas baleares": "07", "illes balears": "07", "canarias": "53",
+           "islas canarias": "53", "navarra": "32", "aragon": "52"},
+    "FR": {"bretagne": "53", "normandie": "28", "nouvelle aquitaine": "75", "corse": "94",
+           "ile de france": "11", "provence alpes cote d azur": "93", "paca": "93",
+           "centre val de loire": "24"},
+    "IT": {"lombardia": "09", "piemonte": "12", "sicilia": "15", "puglia": "13", "marche": "10",
+           "toscana": "16", "sardegna": "14", "lazio": "07", "veneto": "20",
+           "emilia romagna": "05", "friuli": "06", "trentino": "17", "alto adige": "17",
+           "sudtirol": "17", "valle d aosta": "19", "basilicata": "02", "liguria": "08",
+           "trentino alto adige": "17"},
+    "NL": {"noord holland": "07", "zuid holland": "11", "noord brabant": "06",
+           "fryslan": "02", "friesland": "02"},
+    "PL": {"malopolska": "77", "malopolskie": "77", "mazowsze": "78", "mazowieckie": "78",
+           "slask": "83", "slaskie": "83", "pomorze": "82", "pomorskie": "82",
+           "wielkopolska": "86", "wielkopolskie": "86", "dolny slask": "72",
+           "dolnoslaskie": "72", "podkarpacie": "80", "podkarpackie": "80"},
+}
+# UK counties and areas in station names and tags: the town to place them at
+# (the nation follows from the town).
+GB_AREAS = {"yorkshire": "Leeds", "cornwall": "Truro", "devon": "Exeter", "kent": "Maidstone",
+            "essex": "Chelmsford", "sussex": "Brighton", "surrey": "Guildford",
+            "norfolk": "Norwich", "suffolk": "Ipswich", "lancashire": "Preston",
+            "cumbria": "Carlisle", "dorset": "Dorchester", "somerset": "Taunton",
+            "hampshire": "Winchester", "merseyside": "Liverpool", "midlands": "Birmingham",
+            "tyneside": "Newcastle upon Tyne", "teesside": "Middlesbrough",
+            "cheshire": "Chester", "derbyshire": "Derby", "lincolnshire": "Lincoln",
+            "northumberland": "Morpeth", "wiltshire": "Salisbury",
+            "gloucestershire": "Gloucester", "oxfordshire": "Oxford",
+            "berkshire": "Reading", "hertfordshire": "Hertford",
+            "cambridgeshire": "Cambridge", "shropshire": "Shrewsbury",
+            "staffordshire": "Stafford", "warwickshire": "Warwick",
+            "leicestershire": "Leicester", "nottinghamshire": "Nottingham",
+            "worcestershire": "Worcester", "herefordshire": "Hereford",
+            "buckinghamshire": "Aylesbury", "bedfordshire": "Bedford",
+            "northamptonshire": "Northampton", "isle of wight": "Newport",
+            "fife": "Glenrothes", "ayrshire": "Ayr", "lanarkshire": "Hamilton",
+            "aberdeenshire": "Aberdeen", "perthshire": "Perth", "highlands": "Inverness",
+            "gwynedd": "Caernarfon", "anglesey": "Llangefni", "pembrokeshire": "Haverfordwest",
+            "ceredigion": "Aberystwyth", "powys": "Llandrindod Wells",
+            "glamorgan": "Cardiff", "carmarthenshire": "Carmarthen", "antrim": "Antrim",
+            "armagh": "Armagh", "tyrone": "Omagh", "fermanagh": "Enniskillen",
+            "east anglia": "Norwich", "west country": "Bristol", "west midlands": "Birmingham",
+            "east midlands": "Nottingham", "greater london": "London",
+            "greater manchester": "Manchester", "east sussex": "Brighton",
+            "west sussex": "Chichester", "north yorkshire": "York",
+            "south yorkshire": "Sheffield", "west yorkshire": "Leeds",
+            "east yorkshire": "Hull"}
+
 # Words that mark a test broadcast rather than a station.
 TEST_WORDS = ("test",)
 
 def tool_version():
     try:
-        with open(os.path.join(ROOT, "VERSION"), encoding="utf-8") as f:
+        with open(os.path.join(ROOT, "linux", "VERSION"), encoding="utf-8") as f:
             return f.read().strip() or "dev"
     except OSError:
         return "dev"
@@ -294,6 +402,12 @@ class Borders:
             data = json.load(f)
         self.shapes = []  # (cc, (lon0, lat0, lon1, lat1), [outer, hole, ...])
         self.sovereign = {}  # country code -> sovereign state (SOV_A3): IM, GB -> GBR
+        # country code -> its name (ADMIN), for a station moved to a country
+        # that no other station in the snapshot is in
+        self.names = {}
+        # country code -> (lat, lon) of Natural Earth's label point, inside
+        # the country: where its "Country-wide" place goes
+        self.labels = {}
         for feat in data.get("features", []):
             props = feat.get("properties") or {}
             # ISO_A2 is -99 for France and Norway; ISO_A2_EH has them.
@@ -303,6 +417,13 @@ class Borders:
                 continue
             if props.get("SOV_A3"):
                 self.sovereign[cc.upper()] = props["SOV_A3"]
+            name = country_name(props.get("ADMIN"))
+            if name:
+                self.names.setdefault(cc.upper(), name)
+            lx = coord(props.get("LABEL_X"), -180, 180)
+            ly = coord(props.get("LABEL_Y"), -90, 90)
+            if lx is not None and ly is not None:
+                self.labels.setdefault(cc.upper(), (ly, lx))
             polys = geom.get("coordinates") or []
             if geom.get("type") == "Polygon":
                 polys = [polys]
@@ -355,6 +476,10 @@ class Cities:
         self.big_by_name = {}  # folded name -> (lat, lon, name, pop, cc), pop >= NAMED_TOWN_POP
         self.country_names = {}  # country code -> name, filled in from the stations
         self.borders = None  # a Borders, if given
+        # For stations without coordinates (rfold keys):
+        self.towns = {}    # (cc, name) -> (lat, lon, name, pop, admin1); other names if big
+        self.seats = {}    # (cc, admin1) -> ((is seat, pop), (lat, lon, name, pop))
+        self.regions = {}  # (cc, region name) -> admin1 code, from load_admin1()
         for row in self._rows(path):
             parts = row.split("\t")
             if len(parts) < 15:
@@ -381,6 +506,17 @@ class Cities:
             entry = (lat, lon, name, pop)
             if parts[7] == "PPLC" and pop >= self.capitals.get(cc, (0, 0, "", -1))[3]:
                 self.capitals[cc] = entry
+            names = [name, clean(parts[2], 60), short]
+            if pop >= ALT_NAME_POP:
+                names += [clean(a, 60) for a in parts[3].split(",")]
+            for n in names:
+                k = (cc, rfold(n))
+                if len(k[1]) >= 3 and pop > self.towns.get(k, (0, 0, "", -1))[3]:
+                    self.towns[k] = entry + (parts[10],)
+            rank = (parts[7] in ("PPLA", "PPLC"), pop)
+            k = (cc, parts[10])
+            if parts[10] and (k not in self.seats or rank > self.seats[k][0]):
+                self.seats[k] = (rank, entry)
             for n in {name, clean(parts[2], 60), short}:
                 k = (cc, fold(n))
                 if n and pop > self.by_name.get(k, (0, 0, "", -1))[3]:
@@ -444,6 +580,126 @@ class Cities:
                 town = min(uk, key=lambda f: f[0])[1] if uk else None
             if town and town[5] in UK_NATIONS:
                 return "GB", UK_NATIONS[town[5]]
+        return None
+
+    def load_admin1(self, path):
+        """GeoNames' admin1CodesASCII.txt: region names, and the aliases in
+        REGION_ALIASES. Returns the number of regions."""
+        n = 0
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) < 3 or "." not in parts[0]:
+                    continue
+                cc, code = parts[0].split(".", 1)
+                if (cc, code) not in self.seats:
+                    continue
+                n += 1
+                for nm in (parts[1], parts[2]):
+                    self.regions.setdefault((cc, rfold(nm)), code)
+                # Letter codes are the usual abbreviations: US "TX", CH "ZH".
+                if 2 <= len(code) <= 3 and all("A" <= ch <= "Z" for ch in code):
+                    self.regions.setdefault((cc, code.lower()), code)
+        for cc, aliases in REGION_ALIASES.items():
+            for alias, code in aliases.items():
+                if (cc, code) in self.seats:
+                    self.regions.setdefault((cc, alias), code)
+        return n
+
+    def seat(self, cc, code):
+        return self.seats[(cc, code)][1]
+
+    def region_place(self, cc, text, country):
+        """(lat, lon, how, admin1) for Radio Browser's region field: a town
+        ("region_town") or a region ("admin1", placed at its capital), or
+        None."""
+        c = rfold(country)
+        tries = [text]
+        parts = [text]
+        for sep in (",", "/", "(", " - "):
+            parts = [q for p in parts for q in p.split(sep)]
+        if len(parts) > 1:
+            tries += [p.strip(" )") for p in parts if p.strip(" )")]
+        for t in tries:
+            for v in region_variants(t, country):
+                if v == c:
+                    continue  # "Mexico" is a state of Mexico too
+                town = self.towns.get((cc, v))
+                code = self.regions.get((cc, v))
+                if code and not (town and town[3] >= REGION_TOWN_WINS_POP):
+                    seat = self.seat(cc, code)
+                    return seat[0], seat[1], "admin1", code
+                if town:
+                    return town[0], town[1], "region_town", ""
+                if cc == "GB" and v in GB_AREAS:
+                    town = self.towns.get((cc, rfold(GB_AREAS[v])))
+                    if town:
+                        return town[0], town[1], "region_town", ""
+        # "Seattle Washington", "Heraklion Crete": a town inside it.
+        hit = self.town_in_name(text, cc)
+        if hit:
+            return hit[0], hit[1], "region_town", ""
+        return None
+
+    def town_in_name(self, name, cc, admin1=""):
+        """A town of NOCOORD_TOWN_POP or more in country cc (and region
+        admin1, if given) named in a station name: (lat, lon), or None.
+        Longest match first."""
+        words = rfold("".join(ch if ch.isalnum() else " " for ch in name)).split()
+        for n in (3, 2, 1):
+            for i in range(len(words) - n + 1):
+                key = " ".join(words[i:i + n])
+                if len(key) < 4 or key in TOWN_STOPWORDS:
+                    continue
+                town = self.towns.get((cc, key))
+                if town and town[3] >= NOCOORD_TOWN_POP and (not admin1 or town[4] == admin1):
+                    return town[0], town[1]
+        return None
+
+    def region_in_text(self, text, cc, country):
+        """A region (or, in the UK, a county) named in a station's name or
+        tags: (lat, lon), or None. Longest match first."""
+        words = rfold("".join(ch if ch.isalnum() else " " for ch in text)).split()
+        for n in (4, 3, 2, 1):
+            for i in range(len(words) - n + 1):
+                key = " ".join(words[i:i + n])
+                if len(key) < 5 or all(w in REGION_GENERIC for w in key.split()) \
+                        or key == rfold(country):
+                    continue
+                if cc == "GB" and key in GB_AREAS:
+                    town = self.towns.get((cc, rfold(GB_AREAS[key])))
+                    if town:
+                        return town[0], town[1]
+                code = self.regions.get((cc, key))
+                if code:
+                    c = self.seat(cc, code)
+                    return c[0], c[1]
+        return None
+
+    def place_without_coords(self, cc, country, name, region, tags, hosts, sisters):
+        """(lat, lon, how, country code) for a station with no coordinates,
+        or None. how is "sister", "region_town", "name_town", "admin1",
+        "name_region" or "country". hosts: the station's website and stream
+        hosts; a sister must share one."""
+        sister = sisters.get((cc, fold(name)))
+        if sister and sister[3] & hosts:
+            return sister[0], sister[1], "sister", sister[2]
+        hit = self.region_place(cc, region, country) if region else None
+        if hit and hit[2] == "region_town":
+            return hit[0], hit[1], "region_town", cc
+        # A town in the name is more precise than a region ("Joliet",
+        # region "Illinois"), but only one in that region.
+        town = self.town_in_name(name, cc, hit[3] if hit else "")
+        if town:
+            return town[0], town[1], "name_town", cc
+        if hit:
+            return hit[0], hit[1], "admin1", cc
+        hit = self.region_in_text(name + " " + (tags or "").replace(",", " , "), cc, country)
+        if hit:
+            return hit[0], hit[1], "name_region", cc
+        label = self.borders.labels.get(cc) if self.borders else None
+        if label:
+            return label[0], label[1], "country", cc
         return None
 
     def named_town(self, name, cc):
@@ -552,6 +808,49 @@ def fold(s):
     return " ".join("".join(ch for ch in s if not unicodedata.combining(ch)).lower().split())
 
 
+def rfold(s):
+    """fold() for region and town names: hyphens, apostrophes and full
+    stops are spaces ("Baden-Württemberg", "St. Gallen")."""
+    s = fold(s)
+    for ch in "-'.\u2019":
+        s = s.replace(ch, " ")
+    return " ".join(s.split())
+
+
+def region_variants(text, country):
+    """Ways to read Radio Browser's region field: as written; without a
+    "(...)" ending; without a trailing abbreviation ("Sydney NSW"); without
+    the country's name ("Athens Greece"); without words like "province"."""
+    out = []
+
+    def add(v):
+        v = rfold(v)
+        if v and v not in out:
+            out.append(v)
+
+    t = clean(text, 100)
+    add(t)
+    t = t.split(" (")[0].strip()
+    add(t)
+    words = t.split()
+    if len(words) > 1 and 2 <= len(words[-1]) <= 3 and all("A" <= ch <= "Z" for ch in words[-1]):
+        t = " ".join(words[:-1])
+        add(t)
+    c = rfold(country)
+    v = rfold(t)
+    if c and v.endswith(" " + c):
+        add(v[: -len(c) - 1])
+    for suffix in (" province", " state", " region", " oblast", " county", " prefecture",
+                   " city", " town"):
+        if v.endswith(suffix):
+            add(v[: -len(suffix)])
+    for prefix in ("province of ", "state of ", "region of ", "city of ", "provincia de ",
+                   "provincia di ", "region de ", "estado de ", "departamento de ", "grad "):
+        if v.startswith(prefix):
+            add(v[len(prefix):])
+    return out
+
+
 def is_test(name):
     words = "".join(ch if ch.isalnum() else " " for ch in name.lower()).split()
     return any(w in TEST_WORDS for w in words)
@@ -618,13 +917,13 @@ class Api:
 
 def fetch(api, args):
     """Yields raw station objects, most-clicked first, page by page."""
-    base = {
-        "has_geo_info": "true",
+    base = {} if args.without_coords else {"has_geo_info": "true"}
+    base.update({
         "hidebroken": "true",
         "order": "clickcount",
         "reverse": "true",
         "limit": PAGE_SIZE,
-    }
+    })
     if len(args.codecs) == 1:
         base["codec"] = CODECS[args.codecs[0]]
         base["codecExact"] = "true"
@@ -658,11 +957,52 @@ def fetch(api, args):
 # ------------------------------------------------------------- conversion
 
 
+def sister_positions(stations, cities):
+    """(country code, folded name) -> (lat, lon, country code) of stations
+    with coordinates, checked as convert() checks them; the most popular
+    wins. Stations without coordinates are placed at their sister's."""
+    out = {}
+    for st in stations:
+        if st.get("lastcheckok") not in (1, True, "1"):
+            continue
+        lat = coord(st.get("geo_lat"), -90, 90)
+        lon = coord(st.get("geo_long"), -180, 180)
+        if lat is None or lon is None or (abs(lat) < 1e-6 and abs(lon) < 1e-6):
+            continue
+        name = clean_name(st.get("name"))
+        cc = clean(st.get("countrycode"), 2).upper()
+        key = (cc, fold(name))
+        if not name or not cc or key in out:
+            continue
+        pos = cities.check_position(lat, lon, cc, clean(st.get("state"), 60), name)
+        if pos:
+            out[key] = (pos[0], pos[1], pos[3], station_hosts(st))
+    return out
+
+
+def host_of(url):
+    """A URL's host name, lower case, without "www."; "" if none."""
+    url = (url or "").strip().lower()
+    if "://" not in url:
+        return ""
+    host = url.split("://", 1)[1].split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    host = host.rsplit("@", 1)[-1].split(":", 1)[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def station_hosts(st):
+    """The hosts of a station's website and stream, for telling another
+    stream of the same station from a different station of the same name."""
+    return {h for h in (host_of(st.get("homepage")), host_of(st.get("url_resolved"))) if h}
+
+
 def convert(stations, args, cities):
     allowed = {CODECS[c] for c in args.codecs}
     seen_uuid, seen_url = set(), set()
     skipped = {}
     out = []
+    without = bool(getattr(args, "without_coords", False) and cities)
+    sisters = sister_positions(stations, cities) if without else {}
 
     def skip(why):
         skipped[why] = skipped.get(why, 0) + 1
@@ -672,7 +1012,8 @@ def convert(stations, args, cities):
         if uuid in seen_uuid:
             continue  # the same station on two pages
         seen_uuid.add(uuid)
-        if st.get("hls") in (1, True, "1"):
+        is_hls = st.get("hls") in (1, True, "1")
+        if is_hls and not args.hls:
             skip("HLS stream")
             continue
         if st.get("lastcheckok") not in (1, True, "1"):
@@ -680,11 +1021,16 @@ def convert(stations, args, cities):
             continue
         lat = coord(st.get("geo_lat"), -90, 90)
         lon = coord(st.get("geo_long"), -180, 180)
-        if lat is None or lon is None or (abs(lat) < 1e-6 and abs(lon) < 1e-6):
+        no_coords = lat is None or lon is None or (abs(lat) < 1e-6 and abs(lon) < 1e-6)
+        if no_coords and not without:
             skip("no usable coordinates")
             continue
         codec = clean(st.get("codec"), 20).upper()
-        if codec not in allowed:
+        if is_hls:
+            # The app finds out what is inside; Radio Browser often doesn't
+            # know ("UNKNOWN").
+            codec = "HLS" if codec in ("", "UNKNOWN") else codec + "/HLS"
+        elif codec not in allowed:
             skip("codec %s not selected" % (codec or "unknown"))
             continue
         try:
@@ -717,14 +1063,28 @@ def convert(stations, args, cities):
         cc = clean(st.get("countrycode"), 2).upper()
         geo = "ok"
         if cities:
-            pos = cities.check_position(lat, lon, cc, clean(st.get("state"), 60), name)
+            if no_coords:
+                pos = cities.place_without_coords(cc, country, name, clean(st.get("state"), 60),
+                                                  clean(st.get("tags"), 300), station_hosts(st),
+                                                  sisters) if cc else None
+                if pos is None:
+                    skip("no coordinates, and no country to place it in")
+                    continue
+            else:
+                pos = cities.check_position(lat, lon, cc, clean(st.get("state"), 60), name)
             if pos is None:
                 skip("coordinates in the open sea, no country to fall back on")
                 continue
             lat, lon, geo, new_cc = pos
-            if new_cc != cc and new_cc in cities.country_names:
-                country, cc = cities.country_names[new_cc], new_cc
-            terr = cities.territory(lat, lon)
+            if new_cc != cc:
+                # The position wins: the name Radio Browser uses for that
+                # country, or the borders file's when no station in the
+                # snapshot is in it (a download for some countries only).
+                new_name = cities.country_names.get(new_cc) or (
+                    cities.borders.names.get(new_cc, "") if cities.borders else "")
+                if new_name:
+                    country, cc = new_name, new_cc
+            terr = cities.territory(lat, lon) if geo != "country" else None
             if terr and terr[1] != country:
                 cc, country = terr
                 relabelled = True
@@ -733,11 +1093,13 @@ def convert(stations, args, cities):
         else:
             relabelled = False
         city, city_from = "", "none"
-        if cities:
+        if geo == "country":
+            city, city_from = COUNTRY_WIDE, "country"
+        elif cities:
             found, _ = cities.nearest(lat, lon, args.city_km, cc)
             if found:
                 city, city_from = found, "city"
-        if not city:
+        if not city and geo != "country":
             # No town nearby: Radio Browser's region (state/province), so
             # the station joins a named place rather than one named by its
             # coordinates.
@@ -746,7 +1108,7 @@ def convert(stations, args, cities):
                     ch.isdigit() for ch in region):
                 city, city_from = region, "region"
         notes = "%s %s rb:%s" % (codec, ("%dk" % bitrate) if bitrate else "?k", uuid)
-        if homepage:
+        if homepage and homepage.rstrip("/") != url.rstrip("/"):
             notes += " web:" + homepage
         if geo != "ok":
             notes += " " + GEO_NOTES[geo]
@@ -772,6 +1134,15 @@ GEO_NOTES = {
     "trusted": "(country corrected to match the position)",
     "region": "(position: Radio Browser's region; its coordinates were outside the country)",
     "capital": "(position: the capital; Radio Browser's coordinates were outside the country)",
+    "sister": "(position: another stream of this station; Radio Browser has no coordinates)",
+    "region_town": "(position: the town given as its region; Radio Browser has no "
+                   "coordinates)",
+    "admin1": "(position: the capital of its region; Radio Browser has no coordinates)",
+    "name_town": "(position: the town in the station's name; Radio Browser has no "
+                 "coordinates)",
+    "name_region": "(position: the capital of the region in its name or tags; Radio Browser "
+                   "has no coordinates)",
+    "country": "(position: none given; in its country's Country-wide place)",
 }
 
 
@@ -796,6 +1167,8 @@ def header(args, cities, count):
         opts += ", min bitrate %dk" % args.min_bitrate
     if args.tag:
         opts += ", tag '%s'" % args.tag
+    if args.hls:
+        opts += ", HLS included"
     lines = [
         "# DX Garden stations.txt generated by tools/rb_to_stations.py on %s." % when,
         "# Source: a snapshot of Radio Browser (radio-browser.info) taken %s, %d stations, %s."
@@ -810,6 +1183,9 @@ def header(args, cities, count):
     if cities:
         lines.insert(4, "# Positions outside the station's country were checked and fixed "
                         "(see Notes).")
+        if getattr(args, "without_coords", False):
+            lines.insert(5, "# Stations without coordinates are placed by their region, a town "
+                            "or region in their name, or in a Country-wide place (see Notes).")
     if args.bundle:
         lines = [
             "# DX Garden default station list, shipped with DX Garden %s." % args.bundle,
@@ -876,15 +1252,28 @@ def parse_args(argv):
                     help="farthest a city can be from the station (default %(default)s km)")
     ap.add_argument("--countries", help="comma-separated ISO codes, e.g. GB,IE,FR")
     ap.add_argument("--codecs", default="mp3",
-                    help="comma-separated: %s (default mp3)" % ", ".join(CODECS))
+                    help="comma-separated: %s, or all (default mp3)" % ", ".join(CODECS))
+    ap.add_argument("--hls", action="store_true",
+                    help="also HLS streams, whatever their codec (the desktop app plays "
+                         "them; the Vita doesn't)")
+    ap.add_argument("--max-mb", type=int, default=DEFAULT_MAX_MB,
+                    help="largest file to write, in MB (default %(default)s, the Vita's "
+                         "limit; the desktop app reads up to 32)")
     ap.add_argument("--min-bitrate", type=int, default=0, help="in kbps; drops unknown bitrates")
     ap.add_argument("--tag", help="only stations with this tag, e.g. jazz")
     ap.add_argument("--max", type=int, default=DEFAULT_MAX,
                     help="most stations to write, most popular first (default %(default)s)")
+    ap.add_argument("--without-coords", action="store_true",
+                    help="also stations without coordinates, placed by their region, a town "
+                         "in their name, or country-wide (needs --geonames; best with "
+                         "--admin1 and --borders)")
+    ap.add_argument("--admin1", metavar="FILE",
+                    help="GeoNames admin1CodesASCII.txt (region names), for --without-coords")
     ap.add_argument("--save-raw", metavar="FILE",
                     help="also save the downloaded stations (JSON), to rebuild offline")
-    ap.add_argument("--from-raw", metavar="FILE",
-                    help="rebuild from a file saved with --save-raw instead of downloading")
+    ap.add_argument("--from-raw", metavar="FILE", action="append",
+                    help="rebuild from a file saved with --save-raw instead of downloading "
+                         "(more than one: their stations in that order)")
     ap.add_argument("--bundle", metavar="VERSION",
                     help="add the header for the list shipped with this app version")
     ap.add_argument("--check", type=int, metavar="N", default=0,
@@ -892,6 +1281,8 @@ def parse_args(argv):
     args = ap.parse_args(argv)
 
     args.codecs = [c.strip().lower() for c in args.codecs.split(",") if c.strip()]
+    if args.codecs == ["all"]:
+        args.codecs = list(CODECS)
     for c in args.codecs:
         if c not in CODECS:
             ap.error("unknown codec '%s'; use %s" % (c, ", ".join(CODECS)))
@@ -917,13 +1308,18 @@ def main(argv=None):
         if args.borders:
             cities.borders = Borders(args.borders)
             log("Borders: %d shapes loaded from %s" % (len(cities.borders.shapes), args.borders))
+        if args.admin1:
+            log("Regions: %d loaded from %s" % (cities.load_admin1(args.admin1), args.admin1))
 
     if args.from_raw:
-        with open(args.from_raw, encoding="utf-8") as f:
-            raw = json.load(f)
-        log("%d stations read from %s" % (len(raw), args.from_raw))
+        raw = []
+        for path in args.from_raw:
+            with open(path, encoding="utf-8") as f:
+                part = json.load(f)
+            log("%d stations read from %s" % (len(part), path))
+            raw += part
         # When the snapshot was taken: the saved file's time, not today.
-        args.snapshot = os.path.getmtime(args.from_raw)
+        args.snapshot = os.path.getmtime(args.from_raw[0])
     else:
         args.snapshot = time.time()
         raw = list(fetch(Api(), args))
@@ -935,9 +1331,9 @@ def main(argv=None):
     lines, skipped = convert(raw, args, cities)
     text = header(args, cities, len(lines)) + "".join(l[0] + "\n" for l in lines)
     data = text.encode("utf-8")
-    if len(data) > MAX_FILE_BYTES:
-        raise SystemExit("output would be %d bytes, over the app's 8 MB limit; lower --max"
-                         % len(data))
+    if len(data) > args.max_mb * 1024 * 1024:
+        raise SystemExit("output would be %d bytes, over the %d MB limit; lower --max"
+                         % (len(data), args.max_mb))
     tmp = args.output + ".part"
     with open(tmp, "wb") as f:
         f.write(data)
@@ -952,9 +1348,12 @@ def main(argv=None):
     geo = {}
     for _, _, _, g in lines:
         geo[g] = geo.get(g, 0) + 1
+    with_country = sum(1 for _, _, c, _ in lines if c == "country")
     print("  Place: nearest city within %g km %d, Radio Browser region %d, none "
-          "(named by coordinates on the Vita) %d."
-          % (args.city_km, with_city, with_region, len(lines) - with_city - with_region))
+          "(named by coordinates on the Vita) %d%s."
+          % (args.city_km, with_city, with_region,
+             len(lines) - with_city - with_region - with_country,
+             ", country-wide %d" % with_country if args.without_coords else ""))
     print("  Per codec: " + ", ".join("%s %d" % kv for kv in sorted(per_codec.items())))
     if cities:
         print("  Positions: ok %d, swapped %d, sign flipped %d, brought ashore %d, "
@@ -963,6 +1362,12 @@ def main(argv=None):
                                geo.get("ashore", 0), geo.get("named", 0),
                                geo.get("trusted", 0), geo.get("region", 0),
                                geo.get("capital", 0)))
+        if args.without_coords:
+            print("  Without coordinates: another stream %d, region's town %d, region %d, "
+                  "town in name %d, region in name %d, country-wide %d."
+                  % (geo.get("sister", 0), geo.get("region_town", 0), geo.get("admin1", 0),
+                     geo.get("name_town", 0), geo.get("name_region", 0),
+                     geo.get("country", 0)))
     if skipped:
         print("Skipped:")
         for why, n in sorted(skipped.items(), key=lambda kv: -kv[1]):

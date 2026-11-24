@@ -190,6 +190,7 @@ int main(int argc, char **argv)
     run_bidi_tests();
     run_stream_tests();
     run_hls_tests();
+    run_rb_tests();
 
     printf("%d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

@@ -125,7 +125,7 @@ static void save_open(void)
 static void build_tree(int keep_selection)
 {
     const library *lib = &D->lib;
-    int i, j, sel_kind = -1, sel_idx = -1;
+    int i, j, k, sel_kind = -1, sel_idx = -1;
 
     if (keep_selection && tv.sel >= 0 && tv.sel < n_nodes) {
         sel_kind = node_kind[tv.sel];
@@ -148,9 +148,15 @@ static void build_tree(int keep_selection)
         const group *g = &lib->countries[i];
         add_node(g->name[0] ? g->name : "(no country)", ICON_FOLDER, ICON_FOLDER_OPEN, 1,
                  NK_COUNTRY, i, g->n > 0, country_open ? country_open[i] : 0);
-        for (j = 0; j < g->n; j++)
-            add_node(lib->places[g->items[j]].name, ICON_TOWN, ICON_TOWN, 2, NK_PLACE, g->items[j],
-                     0, 0);
+        /* The Country-wide place (stations with no town) first, with a
+         * globe, then the towns. */
+        for (k = 0; k < 2; k++)
+            for (j = 0; j < g->n; j++) {
+                const place *pl = &lib->places[g->items[j]];
+                if (pl->country_wide == !k)
+                    add_node(pl->name, k ? ICON_TOWN : ICON_GLOBE, k ? ICON_TOWN : ICON_GLOBE, 2,
+                             NK_PLACE, g->items[j], 0, 0);
+            }
     }
     add_node("Genres", ICON_FOLDER, ICON_FOLDER_OPEN, 0, NK_GENRES, 0, lib->n_genres > 0,
              open_genres);
@@ -259,8 +265,11 @@ static void fill_rows(int kind, int idx)
             add_row(i);
         break;
     case NK_COUNTRY:
-        for (j = 0; j < lib->countries[idx].n; j++)
-            add_place_rows(lib->countries[idx].items[j]);
+        /* Country-wide first, as in the tree. */
+        for (i = 0; i < 2; i++)
+            for (j = 0; j < lib->countries[idx].n; j++)
+                if (lib->places[lib->countries[idx].items[j]].country_wide == !i)
+                    add_place_rows(lib->countries[idx].items[j]);
         break;
     case NK_PLACE:
     case NK_SEARCH_PLACE:
@@ -865,7 +874,7 @@ static void add_draw(ui_window *w, rect c, void *ud)
     int x = c.x + 12, y = c.y + 10, lw = 64, fw = c.w - 24;
     (void)ud;
     y += ui_text_wrap(x, y, fw, UI_TEXT,
-                      "The station goes in import\\added-by-url.m3u and appears under "
+                      "The station goes in import/added-by-url.m3u and appears under "
                       "Unplaced, where you can give it a place.") + 8;
     ui_label(x, y + 4, "Name:");
     ui_edit(ui_id("a_name"), add_name, sizeof(add_name), x + lw, y, fw - lw);
@@ -886,7 +895,7 @@ static void add_draw(ui_window *w, rect c, void *ud)
         snprintf(name, sizeof(name), "%s", add_name[0] ? add_name : add_url);
         ui_window_close(w);
         if (data_add_url(D, name, url) != 0) {
-            ui_msgbox_open("Add Station", "Could not write import\\added-by-url.m3u.", MB_ERROR,
+            ui_msgbox_open("Add Station", "Could not write import/added-by-url.m3u.", MB_ERROR,
                            ok, 1);
             return;
         }

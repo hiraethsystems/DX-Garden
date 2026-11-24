@@ -8,6 +8,15 @@ A Vita take on Radio Garden: spin a globe, move over a city, and hear live radio
 
 It should feel like Radio Garden to use, but with its own visual identity. Do not copy Radio Garden's artwork, logo, colours, icons or text.
 
+## Two apps, one repo (my decision, 2026-11-22)
+
+There are now two separate products that share this repo and `core/`:
+
+- **DX Garden for PS Vita** (`vita/`): the original brief below. Mostly finished; leave it as it is unless I ask.
+- **DX Garden for Linux** (`linux/`): a desktop app on SDL3 and OpenGL, released as an AppImage. It has its own features (AAC, Ogg, Opus, FLAC, HLS, artist/song, station websites, its own bundled list) and its own Linux look; the Vita-specific rules below (rear touchpad, 960x544, button remapping) don't apply to it.
+
+Each app has its own `VERSION` and `BUILD` (`vita/VERSION`, `vita/BUILD`, `linux/VERSION`, `linux/BUILD`), its own releases, tagged `vita-vX.Y.Z` or `linux-vX.Y.Z`, and its own bundled station list (`assets/stations/stations.txt` for the Vita, `assets/stations/linux/stations.txt` for Linux). `core/` stays portable C99 and shared: when it changes, the Linux unit tests must pass and the Vita build must still compile. There is no Windows version any more (removed 2026-11-22).
+
 I will test every build on real hardware and report back. Work in small milestones, and stop at the end of each one so I can test before you continue.
 
 ## Station data (important)
@@ -21,6 +30,8 @@ On the Vita, stations come only from my own station file and imports:
 **One directory is allowed, as a desktop snapshot only: Radio Browser (radio-browser.info).** A desktop script (`tools/rb_to_stations.py`) downloads stations from it once and writes a normal `stations.txt`. The Vita app never contacts Radio Browser.
 
 **Bundled list (my decision, 2026-10-21):** one snapshot made with that script (`--bundle <version>`) ships in the VPK as `assets/stations/stations.txt`. On first run it becomes `ux0:data/dxgarden/stations.txt`; the app never overwrites an existing one. The README says the list is correct as of the release date and that changes are the user's responsibility. Country labels follow where a station actually is, whatever Radio Browser says (my decision): Ukraine's territory, including Crimea and the occupied east and south, is labelled Ukraine; Palestinian territory is labelled Gaza or Occupied West Bank; UK stations are labelled by nation (England, Scotland, Wales, Northern Ireland), and the Crown Dependencies by their own names (Isle of Man, Jersey, Guernsey). Bundle no other list, and do not use Radio Garden's own API or data in any form (including entries that point back at Radio Garden). Ask me before using any other directory, and before adding any live lookup from the Vita (including to Radio Browser).
+
+**Desktop app downloads (my decision, 2026-11-22):** the desktop (Linux) app may download Radio Browser station data, the GeoNames cities file and Natural Earth country borders, to build a new `stations.txt` in the app, when the user asks for it (a dialog with filters, never in the background). The desktop app ships its own bundled list (`assets/stations/linux/stations.txt`, every format it plays, HLS included, no cap); the Vita keeps its MP3 list and never goes online for directory data. The same country-label rules apply to every list. No other directory or live lookup without asking me.
 
 Keep all station loading behind a `station_source` interface in `core/` so another source could be added later, but only if I explicitly decide to. If a feature would need a directory or a live lookup, stop and ask me.
 
@@ -96,7 +107,7 @@ Any world map or globe texture must be public domain or have a licence that allo
 ## How to work with me
 
 - Explain decisions in plain terms and keep a running `NOTES.md` of design decisions and known issues.
-- Before each milestone, give a short plan; after it, give me a test checklist for the Vita.
-- Bump the build number (`BUILD`) for every build so I can tell builds apart; the app, log and VPK name show it. `VERSION` (MAJOR.MINOR.PATCH, minor and patch 0-9, shown by the Vita as XX.YY) changes only when we decide the next release; releases are tagged `vX.Y.Z`.
+- Before each milestone, give a short plan; after it, give me a test checklist (for the Vita or the Linux desktop, whichever app it touches).
+- Bump the build number (that app's `BUILD`) for every build so I can tell builds apart; the app, log and VPK or AppImage name show it. `VERSION` (MAJOR.MINOR.PATCH, minor and patch 0-9, shown by the Vita as XX.YY) changes only when we decide that app's next release; releases are tagged `vita-vX.Y.Z` or `linux-vX.Y.Z`.
 - If something is uncertain on real hardware (performance, decoder speed, standby behaviour), say so instead of guessing, and suggest how I can test it.
-- Keep the README honest: a player and explorer for streams, shipping a dated Radio Browser snapshot as a default list that is the user's to maintain. The app never fetches a directory. A desktop script can build a fresh list from Radio Browser.
+- Keep the README honest: a player and explorer for streams, shipping a dated Radio Browser snapshot as a default list that is the user's to maintain. The Vita app never fetches a directory; the desktop app downloads one only when the user asks. A desktop script can build a fresh list from Radio Browser.

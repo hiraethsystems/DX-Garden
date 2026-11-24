@@ -87,6 +87,7 @@ typedef struct {
 static player P;
 static char ca_file[512]; /* trusted certificates for curl (find_ca_bundle) */
 static int ca_dir;        /* no bundle file found: use /etc/ssl/certs */
+static int ca_found;      /* find_ca_bundle has run */
 
 static void lock(void)
 {
@@ -356,11 +357,6 @@ static void net_setup(CURL *c, const char *url)
         curl_easy_setopt(c, CURLOPT_CAPATH, "/etc/ssl/certs");
     curl_easy_setopt(c, CURLOPT_USERAGENT, USER_AGENT);
     curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
-#ifdef _WIN32
-    /* Schannel checks against the Windows certificate store; revocation
-     * checks fail behind some proxies and on stations with private CAs. */
-    curl_easy_setopt(c, CURLOPT_SSL_OPTIONS, (long)CURLSSLOPT_NO_REVOKE);
-#endif
     curl_easy_setopt(c, CURLOPT_HTTP_VERSION, (long)CURL_HTTP_VERSION_1_1);
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
@@ -537,7 +533,6 @@ static int wait_or_stop(unsigned ms)
  * places. */
 static void find_ca_bundle(void)
 {
-#ifndef _WIN32
     static const char *const FILES[] = {
         "/etc/ssl/certs/ca-certificates.crt",                /* Debian, Ubuntu, Arch, Gentoo */
         "/etc/pki/tls/certs/ca-bundle.crt",                  /* Fedora, RHEL */
@@ -550,6 +545,9 @@ static void find_ca_bundle(void)
     const curl_version_info_data *v = curl_version_info(CURLVERSION_NOW);
     const char *env = SDL_getenv("SSL_CERT_FILE");
     size_t i;
+    if (ca_found)
+        return;
+    ca_found = 1;
     if (env && env[0] && SDL_GetPathInfo(env, NULL)) {
         snprintf(ca_file, sizeof(ca_file), "%s", env);
     } else if (v && v->cainfo && SDL_GetPathInfo(v->cainfo, NULL)) {
@@ -566,7 +564,15 @@ static void find_ca_bundle(void)
         ca_dir = 1;
         LOG("net: no certificate bundle found; trying /etc/ssl/certs");
     }
-#endif
+}
+
+void player_tls_setup(void *curl)
+{
+    find_ca_bundle();
+    if (ca_file[0])
+        curl_easy_setopt((CURL *)curl, CURLOPT_CAINFO, ca_file);
+    else if (ca_dir)
+        curl_easy_setopt((CURL *)curl, CURLOPT_CAPATH, "/etc/ssl/certs");
 }
 
 /* ---- HLS -------------------------------------------------------------- */

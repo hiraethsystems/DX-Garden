@@ -1830,7 +1830,7 @@ promise for Linux, needs GeoNames data, and the script's rules in C).
 **Known issue:** the Windows build no longer links, because
 `build_win_deps.sh win64` doesn't build the new decoders. Fixing it means
 adding them to the win64 target; left until we decide what happens to
-the Windows port.
+the Windows port. *(Resolved in build 44: the Windows port was removed.)*
 
 ## Linux formats, F2: HLS (build 42, 2026-11-22)
 
@@ -1915,3 +1915,256 @@ too).
 
 **Not checked:** the Now Playing layout and the Website link in the GUI
 (clicking opens the browser), long titles at large interface sizes.
+
+## Build 44: two apps, Windows removed, the Linux station list (F4), 2026-11-22
+
+**Decisions (owner, 2026-11-22):**
+- The Vita and Linux apps are separate products in one repo, sharing
+  `core/`. Each has its own `VERSION` and `BUILD` (`vita/`, `linux/`), its
+  own releases (tags `vita-vX.Y.Z`, `linux-vX.Y.Z`; the earlier `v0.9.0` is
+  the Vita's and `v0.9.1` Linux's) and its own bundled list. A full split
+  into two repos was rejected because `core/` would be copied and drift.
+- The Windows port is removed (the owner doesn't use it).
+- The Linux app may download Radio Browser, GeoNames and Natural Earth data
+  when the user asks (for F5); the Vita never goes online for directory
+  data. Recorded in CLAUDE.md and the README.
+- No limits on the Linux list (no cap, no minimum bitrate, every format,
+  HLS included). A map filter may come later if the globe gets cluttered.
+
+**The split:**
+- `desktop/` is now `linux/`, `desktop/linux/` is `linux/share/`,
+  `cmake/desktop.cmake` is `cmake/linux.cmake` (option `DXG_LINUX`, target
+  `dxgarden_linux`), `tools/build_win_deps.sh` is `tools/build_linux_deps.sh`.
+- `VERSION`/`BUILD` moved: Linux 0.9.1, build 44; Vita 0.9.0, build 43
+  (unchanged; the next Vita build is 44).
+- README: status, installing, controls, versions and building are now per
+  app. CLAUDE.md has a "Two apps, one repo" section.
+
+**Windows removed:** `cmake/mingw-w64.cmake`, `dxgarden.rc`,
+`dxgarden.manifest`, the win64 target of the deps script, every `_WIN32`
+branch, the hand-drawn 9x title bar and its hit testing (Linux always used
+the desktop's own frame), and the Windows-only Look menu removal. The
+About box said "for Windows" on Linux too; it now says "for Linux". The
+Classic look (Windows 9x style) stays.
+
+**About box:** "By Aisling de Grás" and aisling@hiraeth.systems, which opens
+the mail program (mailto:).
+
+**F4, the Linux station list** (`assets/stations/linux/stations.txt`):
+- Radio Browser snapshot taken 2026-11-22: 11,105 stations with
+  coordinates (the API's `has_geo_info`); 11,063 written (2.4 MB): MP3
+  7,221, AAC 1,312, AAC+ 1,562, Ogg 109, FLAC 3, HLS 856. Towns from
+  GeoNames cities1000, positions checked against Natural Earth 1:50m
+  countries (v5.1.2). 10,920 stations have a website (`web:`).
+- Rebuild offline (the raw snapshot, GeoNames and Natural Earth files are
+  in `third_party/rb/` and `third_party/geodata/`, not in git):
+  `python3 tools/rb_to_stations.py --from-raw third_party/rb/rb_raw_2026-11-22.json
+  --geonames third_party/geodata/cities1000.zip --borders
+  third_party/geodata/ne_50m_admin_0_countries.geojson --codecs all --hls
+  --max 100000 --max-mb 32 --bundle "for Linux X.Y.Z" -o assets/stations/linux/stations.txt`
+- Script: `flac` codec, `--codecs all`, `--hls` (any codec; noted as e.g.
+  "AAC/HLS", or "HLS" when Radio Browser doesn't know), `--max-mb`, and no
+  `web:` when the "homepage" is just the stream URL.
+- The Linux build reads stations files up to 32 MB (`STATION_FILE_MAX`,
+  overridable; the Vita keeps 8 MB).
+- Loads in 28 ms here: 3,757 places, 183 countries, no errors.
+- Country labels: 356 England, 21 Scotland, 14 Wales, 1 Northern Ireland,
+  3 Isle of Man, 2 Jersey, 1 Guernsey, 44 Ukraine, 2 Occupied West Bank,
+  1 Gaza. **Known miss:** "UK Pressure Radio" is labelled United Kingdom:
+  its pin is in the sea off Cherbourg, so no nation can be told from it.
+- An existing `~/.local/share/dxgarden/stations.txt` is never replaced:
+  rename or delete it to get the new list.
+
+**Checked here:** unit tests (4,650) and script tests (24) pass; a fresh
+data folder gets the new list; 4 of 5 random HLS/AAC+ stations from it
+played (the fifth needs a login, HTTP 401); the build 44 AppImage plays
+and contains the new list.
+
+**Tested by the owner (desktop, build 44 AppImage):** looks good: the new
+list loaded (11,063 stations, 3,757 places), the globe with the full list,
+and Now Playing with song, artist and the Website link (РадиоКанск, Kansk).
+
+**Not checked:** the About box layout.
+The Vita build could not be compiled on this machine: the VitaSDK at
+/usr/local/vitasdk has no vdpm packages (curl, libpng, vita2d, FreeType
+are missing), so this is unrelated to the split; the Vita's own
+VERSION/BUILD are picked up correctly and its core files compile.
+
+## Linux station list download, F5 (build 45, 2026-11-22)
+
+**Decision (owner, 2026-11-22):** the Linux app downloads GeoNames and
+Natural Earth itself (not only Radio Browser), so a list it makes is as
+good as the bundled one. Libraries approved: zlib (to unzip
+`cities1000.zip`) and our own JSON reader. Nothing runs unless the user
+asks; the Vita is unchanged.
+
+**F5a, the list builder in C** (`core/`, Linux and tests only; not in
+the Vita build):
+- `rb_build.c` is a port of `tools/rb_to_stations.py`'s conversion:
+  filters, places, position checks and fixes, country labels (nations of
+  the UK, Crown Dependencies, Ukraine, Gaza, Occupied West Bank), notes,
+  the header and the summary. `json.c` reads JSON, `zip_read.c` takes one
+  file out of a zip with zlib, `ustr.c` gives the Python string behaviour
+  the port needs (lower case, accent folding, stripping), with tables from
+  the Unicode 15.1 database made by `tools/make_unicode_tables.py`
+  (`unitab.c`, about 300 KB of source).
+- The C output is byte-for-byte the script's: `tests/compare_listtool.sh`
+  runs both on the same raw snapshot in 5 configurations (all formats,
+  the Vita's MP3 list, no borders, no towns, 300 stations), and they
+  match. `dxgarden_listtool` is the C side of that comparison. The full
+  list takes 1.1 s in C.
+- One deliberate difference: `rb_query()` leaves out the codec filter
+  when HLS is included, since HLS stations can be any codec (the script
+  asks Radio Browser per codec in that case). The conversion is the same.
+
+**F5b, the download** (`linux/list_download.c`, `linux/list_dialog.c`):
+- File, Download Station List: formats (all ticked, HLS too), countries,
+  tag, lowest bitrate, most stations (100,000 by default, so no real cap),
+  town distance; the cache's date and "Download the town names and
+  borders again".
+- A worker thread: Radio Browser's servers from a DNS lookup of
+  `all.api.radio-browser.info` and each address's name (the documented
+  way), in random order; pages of 500, one a second; each server tried 4
+  times (waiting 2, 4, 8 s) before the next. GeoNames' `cities1000.zip`
+  and Natural Earth 5.1.2's `ne_50m_admin_0_countries.geojson` are kept in
+  `~/.local/share/dxgarden/cache/`. The result goes to
+  `stations-new.txt`; a summary shows; **Replace My Station List** renames
+  `stations.txt` to `stations-backup-<date>.txt` (`-2`, `-3`... if taken),
+  moves the new one in and reloads. Cancel works at any point; closing
+  the window cancels too.
+- `player_tls_setup()` (player.c) gives the download the same
+  certificate search the player uses, which the AppImage's static curl
+  needs.
+- `dxgarden --download-list [--codecs ...] [--hls] [--countries ...]
+  [--max N] [--refresh]` does the same without a window.
+
+**Bug found and fixed (script and C):** when a station's position wins
+over its country ("country corrected to match the position"), the new
+country's name came only from the stations in the snapshot. A download for
+some countries only has no stations from most others, so the label stayed
+wrong: EWTN Great Britain & Ireland, pinned in Birmingham, Alabama, stayed
+"United Kingdom" in a GB/DE/FR download. Now the name falls back to the
+borders file's ADMIN name (tidied the same way, so "United States of
+America" becomes "United States"). Tests added on both sides. Rebuilding
+the bundled Linux list from the same snapshot changed one line: "057
+radio" (a station in Zadar, Croatia whose Radio Browser pin is in
+Libreville) was labelled Ghana and is now Gabon. Its pin is still wrong;
+that's Radio Browser's data. The bundled list's header now says build 45.
+
+**Checked here:** unit tests (4,723) and script tests (24) pass; the
+script and C match on 6 configurations (the 5 above and a GB/DE/FR-only
+snapshot). A real download of everything (all formats, HLS) took 37 s:
+11,110 stations, 11,068 written, in line with the bundled 11,063. A
+download for Ireland and Iceland, then one for GB/DE/FR, through the
+dialog by script: progress, summary, Replace (backups
+`stations-backup-2026-11-22.txt` and `-2.txt`), reload (2,102 stations,
+482 places), Cancel and Back. The build 45 AppImage downloads over HTTPS
+with its own curl.
+
+**Notes:**
+- Only one Radio Browser server answered the name lookup here
+  (de1.api.radio-browser.info), so moving on to the next server after
+  failures isn't tested against a real second server.
+- The progress bar is a rough guide while pages come in (Radio Browser
+  doesn't say how many stations there will be).
+- Replacing the list drops stations added to `stations.txt` by hand or by
+  Place Station (they're in the backup); `import/` is untouched. The
+  dialog says the old list is kept, but not this.
+- "UK Pressure Radio" stays United Kingdom (the known miss from build 44).
+
+**Not checked:** a download on a slow or failing connection; the Vita
+build (still can't compile here; `core/` changes are Linux-only files).
+
+## Linux stations without coordinates, F6 (build 46, 2026-11-22)
+
+Radio Browser has about 53,000 working stations; only 11,000 have
+coordinates. The rest were dropped. Owner's decisions: keep what can be
+placed sensibly, put the rest in **one Country-wide place per country**,
+in its own colour. UK stations with no town or nation are "United
+Kingdom, Country-wide"; Palestinian ones with no town are "Palestine,
+Country-wide" (Nablus and Bethlehem are placed and labelled Occupied
+West Bank as usual).
+
+**Placement**, first that works (`place_without_coords` in the script,
+the same in `core/rb_build.c`):
+1. **Another stream** of the same station (same country, same name, and
+   a website or stream host in common) that has checked coordinates.
+   Without the host check, generic names ("Radio 1") joined the wrong
+   station.
+2. **Region field names a town** of any size in that country ("Augsburg",
+   "Sydney NSW", "Athens Greece"), unless it is also a region and the
+   town is under 1M ("New York" the city wins, "Bavaria" the region).
+3. **A town of 20,000+ in the name**, only in the region if one was
+   given ("Joliet Rocks", region Illinois → Joliet, not Springfield).
+4. **Region field names a region** (GeoNames admin1, its names, letter
+   codes like TX, and a short list of aliases): placed at its capital.
+5. **A region or UK county named in the name or tags** ("Bayern
+   Klassik").
+6. **Country-wide**: Natural Earth's label point for the country
+   (`LABEL_X`/`LABEL_Y`), city "Country-wide". The territory relabelling
+   is skipped there (the label point says nothing about where the
+   station is).
+A region equal to the country's name ("Mexico", a state of Mexico) is
+ignored. UK counties map to a county town (`GB_AREAS`).
+
+**Data:** GeoNames `admin1CodesASCII.txt` (CC BY 4.0, 150 KB), cached
+with the other two files. Queries leave out `has_geo_info` when stations
+without coordinates are wanted, so one download gets everything.
+
+**App:** the dialog's "Stations without coordinates" (on by default),
+`--download-list --without-coords`. `place.country_wide` in
+`core/library.c` (the city folds to "country-wide"); the globe draws
+those dots light blue, a little bigger and on top; the station tree
+lists Country-wide first in each country, with a globe icon.
+
+**Bundled list:** rebuilt from both raw snapshots:
+`python3 tools/rb_to_stations.py --from-raw third_party/rb/rb_raw_2026-11-22.json
+--from-raw third_party/rb/rb_raw_nogeo_2026-11-22.json --geonames
+third_party/geodata/cities1000.zip --borders
+third_party/geodata/ne_50m_admin_0_countries.geojson --admin1
+third_party/geodata/admin1CodesASCII.txt --without-coords --codecs all
+--hls --max 100000 --max-mb 32 --bundle "for Linux X.Y.Z" -o
+assets/stations/linux/stations.txt`.
+51,378 stations (13.6 MB, was 11,063 and 2.5 MB): 21,421 Country-wide,
+7,355 by region's town, 6,310 by region, 4,341 by a town in the name,
+567 by another stream, 321 by a region in the name or tags. 1,195 with no
+country at all are still skipped. 5,285 places (226 countries); the app
+loads it in 116 ms here.
+
+**Checked here:** unit tests (4,755) and script tests (27) pass; the
+script and C match byte for byte on 8 configurations (the 5 before, plus
+without coordinates with borders and regions, without borders, and
+without the regions file). A download for Ireland and Malta with
+`--without-coords`: 207 stations, 95 Country-wide. Screenshots of the
+globe and the dialog.
+
+**Notes:**
+- Placed-by-region stations sit at the region's capital, so a capital
+  can collect stations from all over its region. The Notes say so.
+- Country-wide places are big for some countries (the US, Germany,
+  Brazil have hundreds of stations each in theirs).
+- Town and region matching is by name, so a few will be wrong (a town
+  that shares a name with something else in the station's name). The
+  20,000 population floor and the stopword list keep this down.
+
+A full headless download with the option on (all formats, HLS): 3
+minutes, 51,386 stations written, in line with the bundled 51,378.
+
+**Not checked:** the full download through the dialog (same code as the
+headless run); globe frame rate on slower GPUs with 5,300 dots (fine
+here).
+
+## Release Linux 0.9.2 (beta), 2026-11-24
+
+- **Decision by the tester (2026-11-24):** release the Linux app as 0.9.2,
+  tagged `linux-v0.9.2` (the first tag under the per-app scheme). It holds
+  builds 41 to 46: AAC, Ogg Vorbis, Opus, FLAC and HLS; artist, song and
+  station websites in Now Playing; the larger bundled list (F4); Download
+  Station List (F5); stations without coordinates and Country-wide places
+  (F6). No Vita release: the Vita stays 0.9.0.
+- Build 47: build 46 plus the version bump and README changes. The bundled
+  list is the same snapshot as build 46 (51,378 stations), its header now
+  "shipped with DX Garden for Linux 0.9.2".
+- `linux-port` goes to `main` through a pull request (merge commit), then
+  `linux-v0.9.2` is tagged there and the AppImage is built from that commit
+  with `tools/make_appimage.sh --release`.

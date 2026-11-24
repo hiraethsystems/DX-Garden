@@ -66,4 +66,8 @@ void player_set_volume(int pct);
 void player_update(void);
 void player_get_status(player_status *out);
 
+/* Sets the trusted certificates on a curl handle (the AppImage's curl has
+ * none built in), for other downloads such as the station list. */
+void player_tls_setup(void *curl);
+
 #endif

@@ -587,6 +587,7 @@ static void make_grid(int k, int segs)
 typedef struct {
     double lat, lon;
     float size;
+    int country_wide;
 } gplace;
 
 static gplace *places;
@@ -604,6 +605,11 @@ void earth_set_places(const library *lib)
         places[i].lon = lib->places[i].lon;
         /* Busier places get slightly bigger dots. */
         places[i].size = 1.0f + 0.12f * (float)log2(n > 1 ? n : 1);
+        /* A country's Country-wide place (stations with no town): a bit
+         * bigger, and its own colour. */
+        places[i].country_wide = lib->places[i].country_wide;
+        if (places[i].country_wide)
+            places[i].size += 0.35f;
     }
 }
 
@@ -833,14 +839,19 @@ static void add_dot(int *n, float x, float y, float r, unsigned rgba, float ring
 
 static void draw_dots(int w, int h, float dot_scale, int candidate, int playing)
 {
-    int i, n = 0;
+    int i, k, n = 0;
     double r2 = EARTH_R * EARTH_R;
     /* Dots shrink a little when the whole Earth is in view. */
     float base = dot_scale * (float)clamp(2.2 + 1.6 * (1.0 - cur_cam.alt / 20000.0), 2.0, 3.8);
 
-    for (i = 0; i < n_places; i++) {
-        vec3 p = scale3(unit_ll(places[i].lat, places[i].lon), EARTH_R);
+    /* Town dots first, Country-wide dots on top of them. */
+    for (k = 0; k < 2 * n_places; k++) {
+        int i = k % n_places;
+        vec3 p;
         double sx, sy;
+        if (places[i].country_wide != (k >= n_places))
+            continue;
+        p = scale3(unit_ll(places[i].lat, places[i].lon), EARTH_R);
         if (dot3(p, cur_frame.pos) <= r2)
             continue; /* behind the horizon */
         if (!to_screen(&cur_frame, sub3(p, cur_frame.pos), &sx, &sy))
@@ -848,7 +859,8 @@ static void draw_dots(int w, int h, float dot_scale, int candidate, int playing)
         if (sx < -10 || sy < -10 || sx > w + 10 || sy > h + 10)
             continue;
         add_dot(&n, (float)sx, (float)sy, base * places[i].size,
-                i == playing ? 0x6FE06FFFu : 0xF2A541FFu, 0);
+                i == playing ? 0x6FE06FFFu : places[i].country_wide ? 0x5EC8FFFFu : 0xF2A541FFu,
+                0);
     }
     /* Rings on top of every dot. */
     for (i = 0; i < 2; i++) {
