@@ -81,7 +81,7 @@
 DXG_GL_FUNCS(DXG_GL_DECLARE)
 #undef DXG_GL_DECLARE
 
-/* The rest of desktop/ calls them by their usual names. */
+/* The rest of linux/ calls them by their usual names. */
 #ifndef DXG_GL_NO_ALIASES
 #define glGetString dxg_glGetString
 #define glGetError dxg_glGetError

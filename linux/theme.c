@@ -166,7 +166,6 @@ static void breeze_defaults(desk_colours *c, int dark)
 
 /* ---- kdeglobals ---- */
 
-#ifndef _WIN32
 static int kdeglobals_path(int i, char *out, size_t n)
 {
     const char *xdg = SDL_getenv("XDG_CONFIG_HOME"), *home = SDL_getenv("HOME");
@@ -179,7 +178,6 @@ static int kdeglobals_path(int i, char *out, size_t n)
         return 0;
     return 1;
 }
-#endif
 
 /* The value of key in [group], or NULL. Plain INI as KConfig writes it:
  * "[Colors:Window]" then "BackgroundNormal=239,240,241". */
@@ -244,7 +242,6 @@ static int breeze_from_kde(desk_colours *c, char *scheme, size_t n)
 {
     int got = 0;
     scheme[0] = '\0';
-#ifndef _WIN32
     {
         char path[1100];
         int i;
@@ -305,10 +302,6 @@ static int breeze_from_kde(desk_colours *c, char *scheme, size_t n)
             kde_text[i] = NULL;
         }
     }
-#else
-    (void)c;
-    (void)n;
-#endif
     return got;
 }
 
@@ -366,14 +359,12 @@ static int on_kde(void)
 static void apply(void)
 {
     ui_look_id look = LOOK_CLASSIC;
-#ifndef _WIN32
     if (setting == LOOK_SET_SYSTEM)
         look = on_kde() ? LOOK_BREEZE : LOOK_ADWAITA;
     else if (setting == LOOK_SET_BREEZE)
         look = LOOK_BREEZE;
     else if (setting == LOOK_SET_ADWAITA)
         look = LOOK_ADWAITA;
-#endif
     sys_theme = SDL_GetSystemTheme();
     UI_LOOK = look;
     if (look == LOOK_CLASSIC) {
@@ -423,7 +414,6 @@ int theme_poll(void)
     next_poll = now + 1000;
     if (SDL_GetSystemTheme() != sys_theme)
         changed = 1;
-#ifndef _WIN32
     if (UI_LOOK == LOOK_BREEZE) {
         int i;
         for (i = 0; i < KDE_FILES; i++) {
@@ -436,7 +426,6 @@ int theme_poll(void)
             }
         }
     }
-#endif
     if (changed)
         apply();
     return changed;

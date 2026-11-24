@@ -20,6 +20,8 @@ class Args:
         self.city_km = kw.get("city_km", 30.0)
         self.countries = kw.get("countries")
         self.tag = kw.get("tag")
+        self.hls = kw.get("hls", False)
+        self.without_coords = kw.get("without_coords", False)
 
 
 def station(**kw):
@@ -195,7 +197,7 @@ class BorderCheck(unittest.TestCase):
              "geometry": {"type": "Polygon", "coordinates": [
                  [[12, 51], [15, 51], [15, 54], [12, 54], [12, 51]],
                  [[14.5, 53.5], [14.9, 53.5], [14.9, 53.9], [14.5, 53.9], [14.5, 53.5]]]}},
-            {"properties": {"ISO_A2": "US"},
+            {"properties": {"ISO_A2": "US", "ADMIN": "United States of America"},
              "geometry": {"type": "MultiPolygon", "coordinates": [
                  [[[-160, 60], [-150, 60], [-150, 65], [-160, 65], [-160, 60]]]]}},
         ]
@@ -237,6 +239,119 @@ class BorderCheck(unittest.TestCase):
         self.c.borders.shapes.append(("PL", (15, 51, 18, 54), [[[15, 51], [18, 51], [18, 54],
                                                               [15, 54], [15, 51]]]))
         self.assertEqual(self.c.check_position(52.5, 16.5, "DE", ""), (52.5, 16.5, "ok", "DE"))
+
+
+    def test_country_from_borders(self):
+        # Moved to a country no other station in the snapshot is in (a
+        # download for some countries only): the borders file names it.
+        out, _ = rb.convert([station(name="EWTN", country="Germany", countrycode="DE",
+                                     geo_lat=38.90, geo_long=-77.04)], Args(), self.c)
+        f = out[0][0].split(" | ")
+        self.assertEqual(f[2], "United States")
+        self.assertIn("country corrected", f[7])
+
+
+class WithoutCoords(unittest.TestCase):
+    """Stations Radio Browser has no coordinates for (--without-coords)."""
+
+    def setUp(self):
+        import json
+        rows = [  # name, lat, lon, feature code, country, admin1, population
+            ("Berlin", "52.52437", "13.41053", "PPLC", "DE", "16", "3426354"),
+            ("Munich", "48.13743", "11.57549", "PPLA", "DE", "02", "1260391"),
+            ("Augsburg", "48.37154", "10.89851", "PPLA2", "DE", "02", "259196"),
+            ("Potsdam", "52.39886", "13.06566", "PPLA", "DE", "11", "159456"),
+            ("Springfield", "39.80172", "-89.64371", "PPLA", "US", "IL", "116250"),
+            ("Joliet", "41.52519", "-88.0834", "PPL", "US", "IL", "147433"),
+        ]
+        fd, self.path = tempfile.mkstemp(suffix=".txt")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            for i, (name, lat, lon, code, cc, a1, pop) in enumerate(rows):
+                f.write("\t".join([str(i), name, name, "", lat, lon, "P", code, cc, "", a1, "",
+                                   "", "", pop, "", "", "", ""]) + "\n")
+        fd, self.admin1 = tempfile.mkstemp(suffix=".txt")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("DE.16\tLand Berlin\tLand Berlin\t1\nDE.02\tBayern\tBavaria\t2\n"
+                    "DE.11\tBrandenburg\tBrandenburg\t3\nUS.IL\tIllinois\tIllinois\t4\n"
+                    "DE.99\tNowhere\tNowhere\t5\n")
+        feats = [
+            {"properties": {"ISO_A2": "DE", "ADMIN": "Germany", "LABEL_X": 10.4,
+                            "LABEL_Y": 51.1},
+             "geometry": {"type": "Polygon", "coordinates": [
+                 [[6, 47], [15, 47], [15, 55], [6, 55], [6, 47]]]}},
+            {"properties": {"ISO_A2": "US", "ADMIN": "United States of America",
+                            "LABEL_X": -97.5, "LABEL_Y": 39.5},
+             "geometry": {"type": "Polygon", "coordinates": [
+                 [[-125, 25], [-67, 25], [-67, 49], [-125, 49], [-125, 25]]]}},
+        ]
+        fd, self.geo = tempfile.mkstemp(suffix=".geojson")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"features": feats}, f)
+        self.c = rb.Cities(self.path)
+        self.c.borders = rb.Borders(self.geo)
+        self.assertEqual(self.c.load_admin1(self.admin1), 4)  # DE.99 has no capital
+
+    def tearDown(self):
+        for p in (self.path, self.admin1, self.geo):
+            os.unlink(p)
+
+    def test_variants(self):
+        self.assertEqual(rb.region_variants("Sydney NSW", "Australia"), ["sydney nsw", "sydney"])
+        self.assertEqual(rb.region_variants("Athens Greece", "Greece"),
+                         ["athens greece", "athens"])
+        self.assertEqual(rb.region_variants("Province of Bayern (DE)", "Germany"),
+                         ["province of bayern (de)", "province of bayern", "bayern"])
+        self.assertEqual(rb.rfold("Baden-Württemberg"), "baden wurttemberg")
+
+    def test_place(self):
+        place = self.c.place_without_coords
+        self.assertEqual(place("DE", "Germany", "Mix", "Bavaria", "", set(), {})[2:],
+                         ("admin1", "DE"))
+        self.assertEqual(place("DE", "Germany", "Mix", "Bayern / DE", "",
+                               set(), {})[2], "admin1")
+        self.assertEqual(place("DE", "Germany", "Hits", "Augsburg", "", set(), {})[:3],
+                         (48.37154, 10.89851, "region_town"))
+        self.assertEqual(place("US", "USA", "Joliet Rocks", "Illinois", "", set(), {})[:3],
+                         (41.52519, -88.0834, "name_town"))
+        self.assertEqual(place("US", "USA", "Rock", "IL", "", set(), {})[:3],
+                         (39.80172, -89.64371, "admin1"))
+        self.assertEqual(place("DE", "Germany", "Bayern Klassik", "", "classical", set(),
+                               {})[2], "name_region")
+        self.assertEqual(place("DE", "Germany", "Radio", "", "potsdam,bayern", set(),
+                               {})[2], "name_region")
+        # A region that is the country's name says nothing: Country-wide.
+        self.assertEqual(place("DE", "Germany", "Radio X", "Germany", "", set(), {}),
+                         (51.1, 10.4, "country", "DE"))
+        self.assertIsNone(place("FR", "France", "Radio X", "", "", set(), {}))
+
+    def test_convert(self):
+        def nogeo(name, url, **kw):
+            return station(name=name, url_resolved=url, stationuuid="u-" + url,
+                           geo_lat=None, geo_long=None, tags="", **kw)
+        stations = [
+            station(name="Antenne Bayern", url_resolved="http://a.de/1", stationuuid="s1",
+                    geo_lat=48.37, geo_long=10.9, homepage="http://www.antenne.de"),
+            nogeo("Antenne Bayern", "http://stream.antenne.de/2", homepage="https://antenne.de/"),
+            nogeo("Antenne Bayern", "http://other.example/3", homepage="http://other.example"),
+            nogeo("Radio Mix", "http://e/4", state="Bavaria"),
+            nogeo("Radio Potsdam", "http://e/5"),
+            nogeo("Deutschlandfunk", "http://e/6", state="Germany"),
+            nogeo("Nowhere", "http://e/7", countrycode="", country=""),
+        ]
+        out, skipped = rb.convert(stations, Args(), self.c)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(skipped, {"no usable coordinates": 6})
+        out, skipped = rb.convert(stations, Args(without_coords=True), self.c)
+        self.assertEqual([o[3] for o in out],
+                         ["ok", "sister", "name_region", "admin1", "name_town", "country"])
+        f = [o[0].split(" | ") for o in out]
+        self.assertEqual((f[1][3], f[1][4], f[1][5]), ("Augsburg", "48.3700", "10.9000"))
+        self.assertEqual(f[3][3], "Munich")
+        self.assertEqual(f[4][3], "Potsdam")
+        self.assertEqual((f[5][3], f[5][4], f[5][5]), ("Country-wide", "51.1000", "10.4000"))
+        self.assertIn("Country-wide place", f[5][7])
+        self.assertEqual(out[5][2], "country")
+        self.assertEqual(skipped, {"no coordinates, and no country to place it in": 1})
 
 
 class Territory(unittest.TestCase):
@@ -341,6 +456,32 @@ class Convert(unittest.TestCase):
         self.assertEqual(out[0][0].split(" | ")[3], "")
         out, _ = rb.convert([station(state="R-04")], Args(), None)
         self.assertEqual(out[0][0].split(" | ")[3], "")
+
+    def test_hls_and_flac(self):
+        rows = [station(name="H1", url_resolved="http://e/1.m3u8", hls=1, codec="UNKNOWN"),
+                station(name="H2", url_resolved="http://e/2.m3u8", hls=1, codec="AAC"),
+                station(name="F", url_resolved="http://e/f", codec="FLAC")]
+        out, skipped = rb.convert(rows, Args(), None)
+        self.assertEqual(len(out), 0)
+        self.assertEqual(skipped["HLS stream"], 2)
+        out, _ = rb.convert(rows, Args(codecs=list(rb.CODECS), hls=True), None)
+        self.assertEqual([c for _, c, _, _ in out], ["HLS", "AAC/HLS", "FLAC"])
+        self.assertIn("| HLS 128k rb:u-H1", out[0][0])
+
+    def test_homepage_note(self):
+        out, _ = rb.convert([station(homepage="https://example.org/fm ")], Args(), None)
+        self.assertTrue(out[0][0].endswith("rb:u-x web:https://example.org/fm"))
+        out, _ = rb.convert([station(homepage="https://example.org/a b")], Args(), None)
+        self.assertTrue(out[0][0].endswith("web:https://example.org/a%20b"))
+        for bad in ("", "ftp://x", "example.org", "http://e/x|y", "http://e/" + "x" * 300):
+            out, _ = rb.convert([station(homepage=bad)], Args(), None)
+            self.assertNotIn("web:", out[0][0])
+        out, _ = rb.convert([station(homepage="http://example.com/stream/")], Args(), None)
+        self.assertNotIn("web:", out[0][0])  # the stream itself, not a website
+        out, skipped = rb.convert([station(homepage="https://radio.garden/listen/x")],
+                                  Args(), None)
+        self.assertEqual(out, [])
+        self.assertEqual(skipped["URL refers to Radio Garden"], 1)
 
     def test_unknown_bitrate_note(self):
         out, _ = rb.convert([station(bitrate=0)], Args(), None)

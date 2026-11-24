@@ -3,7 +3,7 @@
 # (or dist/dxgarden-<version>-x86_64.AppImage with --release).
 #
 # The program is linked with the static libraries from
-# `tools/build_win_deps.sh linux-static` (and SDL3 from `... linux`), so it
+# `tools/build_linux_deps.sh linux-static` (and SDL3 from `... linux`), so it
 # needs only glibc (2.38 or later, as built on Debian 13) and what SDL loads
 # at run time: the desktop's graphics, sound and input libraries.
 #
@@ -55,7 +55,7 @@ chmod +x "$TOOLS/appimagetool-$APPIMAGETOOL_VER-x86_64.AppImage"
 
 for lib in "$ROOT/third_party/linux/lib/libSDL3.a" "$ROOT/third_party/linux-static/lib/libcurl.a"; do
     if [ ! -f "$lib" ]; then
-        echo "$lib is missing: run tools/build_win_deps.sh linux and linux-static" >&2
+        echo "$lib is missing: run tools/build_linux_deps.sh linux and linux-static" >&2
         exit 1
     fi
 done
@@ -64,25 +64,25 @@ done
 
 echo "== building"
 mkdir -p "$BUILD"
-cmake -S "$ROOT" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DDXG_DESKTOP=ON \
+cmake -S "$ROOT" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DDXG_LINUX=ON \
     -DDXG_STATIC_DEPS=ON -DDXG_RELEASE="$release" >"$BUILD/configure.log"
-cmake --build "$BUILD" -j "$JOBS" --target dxgarden_desktop >/dev/null
+cmake --build "$BUILD" -j "$JOBS" --target dxgarden_linux >/dev/null
 
 echo "== AppDir"
 rm -rf "$APPDIR"
 DESTDIR="$APPDIR" cmake --install "$BUILD" --prefix /usr --strip >/dev/null
 # The AppImage's own menu entry runs "dxgarden" from the image (the install
 # step wrote the installed path into it).
-cp "$ROOT/desktop/linux/club.hiraeth.dxgarden.desktop" \
+cp "$ROOT/linux/share/club.hiraeth.dxgarden.desktop" \
     "$APPDIR/usr/share/applications/club.hiraeth.dxgarden.desktop"
 cp "$APPDIR/usr/share/applications/club.hiraeth.dxgarden.desktop" "$APPDIR/"
-cp "$ROOT/desktop/linux/club.hiraeth.dxgarden.png" "$APPDIR/club.hiraeth.dxgarden.png"
+cp "$ROOT/linux/share/club.hiraeth.dxgarden.png" "$APPDIR/club.hiraeth.dxgarden.png"
 ln -sf club.hiraeth.dxgarden.png "$APPDIR/.DirIcon"
 ln -sf usr/bin/dxgarden "$APPDIR/AppRun"
 
-# The name: as the VPK's, from VERSION and BUILD.
-version=$(tr -d ' \n' <"$ROOT/VERSION")
-build=$(tr -d ' \n' <"$ROOT/BUILD")
+# The name: from linux/VERSION and linux/BUILD.
+version=$(tr -d ' \n' <"$ROOT/linux/VERSION")
+build=$(tr -d ' \n' <"$ROOT/linux/BUILD")
 if [ "$release" = ON ]; then
     out="$DIST/dxgarden-$version-x86_64.AppImage"
 else

@@ -1757,3 +1757,414 @@ FUSE (the image needs `fusermount3` to mount itself; otherwise run it with
   as 0.9.0, with 54 country labels spelled properly (for example Bosnia
   and Herzegovina, Côte d'Ivoire, North Korea, Réunion, Trinidad and
   Tobago); no stations added or removed.
+- **Published 2026-11-22.** Pull request #4 merged into `main` with a merge
+  commit (7c24817), tagged `v0.9.1` there, and the AppImage rebuilt from
+  that commit with `--release`. Published as a regular release marked
+  Latest, with the AppImage attached:
+  https://github.com/hiraethsystems/DX-Garden/releases/tag/v0.9.1
+  SHA-256 of `dxgarden-0.9.1-x86_64.AppImage`:
+  64bb144621e81b379eef83dc13cba36de46acdaff28b43263eda7a65dd87637f
+  (checked against the downloaded file).
+- Next build numbers continue from 41. `VERSION` stays 0.9.1 until the
+  next release is decided.
+
+## Linux formats, F1: AAC, Ogg Vorbis, Opus, FLAC (build 41, 2026-11-22)
+
+- **Decision by the tester (2026-11-22):** add every format we can to the
+  **Linux version only**, so the station list and globe can cover all of
+  Radio Browser; the Vita stays at 0.9.0 (MP3 only) for now. Then
+  artist/title and station website links, a fuller list, and later an
+  in-app list download (see "Plan" below). HLS was asked for explicitly.
+- **Libraries** (static in the AppImage, built by `tools/build_win_deps.sh
+  linux-decoders`, SHA-256 checked; Xiph's sums are the ones Xiph
+  publishes, faad2's is of GitHub's tag archive): faad2 2.11.4 (GPL 2 or
+  later, compatible with our GPL 3; AAC-LC, HE-AAC, HE-AAC v2, ADTS and
+  LOAS/LATM), libogg 1.3.6, libvorbis 1.3.7, opus 1.6.1, opusfile 0.12
+  (built without its own HTTP, which would need OpenSSL), libFLAC 1.5.0
+  (native and Ogg FLAC). Not used: fdk-aac (licence not GPL-compatible),
+  FFmpeg (far more than needed). The development build uses Debian's
+  `libfaad-dev libvorbis-dev libopusfile-dev libflac-dev`.
+- **`desktop/decode.c`:** one runner per format on the decode thread,
+  pulling bytes through a blocking read from the ring buffer and handing
+  out 16-bit stereo (mono doubled, more channels mixed to the front pair;
+  faad2 mixes 5.1 itself). MP3 moved there unchanged.
+- **Choosing the decoder:** the decode thread reads the first 16 KB (the
+  prebuffer is bigger) and `audio_sniff()` (`core/stream_info.c`, unit
+  tested) names the format from the bytes: Ogg, FLAC, or MPEG audio, ADTS
+  or LOAS frames, counted only when two frames in a row line up, after any
+  ID3 tag, anywhere in the first 8 KB (streams can join mid-frame). Only
+  when the bytes aren't clear does the Content-Type decide. So AAC served
+  as `audio/mpeg` plays. Inside Ogg, the first page says Vorbis, Opus or
+  FLAC (`ogg_sniff()`). WebM and WAV are still refused with a message.
+- **Track titles from the stream:** Ogg and FLAC streams carry
+  ARTIST/TITLE comments (Icecast starts a new chained link per song);
+  these become the Now Playing title, as ICY titles do.
+- **Prebuffer scaled to the bitrate:** the setting is in bytes, sized for
+  128 kbps (64 KB, 4 s). With faster streams it was under a second (FLAC
+  at 1,000 kbps: 0.5 s), and a FLAC test had an underrun at 8 s. Once the
+  decoder knows the bitrate, the prebuffer grows in proportion (up to half
+  the ring), ignoring changes under 10%. FLAC's bitrate is measured from
+  the bytes read.
+- **Now Playing** shows the format: "HE-AAC, 64 kbps", or "Opus, 48000 Hz"
+  until a bitrate is known.
+
+**Checked here** (`--play`, 12-20 s each, no underruns after the prebuffer
+change): Radio Paradise AAC 320, France Info AAC 48 kHz, Süper FM and Fox
+News Radio HE-AAC, SomaFM Groove Salad HE-AAC 32 kbps, Deutschlandfunk Opus
+mono (with ICY metadata inside the Ogg stream), WALM Opus, Nightwave Plaza
+(chained Opus, titles change per song), Energy 90s Ogg Vorbis (titles from
+comments), Pure Lounge Ogg FLAC 24 bit, Rondo Classic FLAC. Decode load
+0-2%. NRJ refused (HTTP 403, probably geo-blocking).
+
+**Not checked:** an HE-AAC v2 stream that says so (SomaFM's 32 kbps
+stream reports v1), AAC actually served as `audio/mpeg` (none found yet;
+the sniffer tests cover it), switching between formats in the window.
+
+**Plan (Linux):** F2 HLS; F3 artist and title on separate lines, station
+websites (`web:` in Notes, `icy-url`); F4 a fuller bundled list for the
+desktop app only (the Vita keeps its MP3 list); F5 downloading a new list
+from Radio Browser inside the app, with a dialog for formats and filters
+(needs decisions first: it changes the "never fetches a directory"
+promise for Linux, needs GeoNames data, and the script's rules in C).
+
+**Known issue:** the Windows build no longer links, because
+`build_win_deps.sh win64` doesn't build the new decoders. Fixing it means
+adding them to the win64 target; left until we decide what happens to
+the Windows port. *(Resolved in build 44: the Windows port was removed.)*
+
+## Linux formats, F2: HLS (build 42, 2026-11-22)
+
+- **Survey first** (the 60 most-clicked HLS stations in Radio Browser):
+  most segments are MPEG-TS with AAC (BBC, Radio France, RTL, RNE, CCTV),
+  then "packed" AAC or MP3 segments that start with one or two ID3 tags
+  (Turkish, Korean and Taiwanese stations), one fragmented MP4 (NHK World
+  in Japanese), one encrypted-key line with METHOD=NONE, and a handful of
+  dead or geo-blocked ones.
+- **`core/hls.c`:** playlist parsing (master and media playlists,
+  EXT-X-MEDIA audio renditions, EXT-X-MAP, EXT-X-KEY, ENDLIST) and URL
+  resolution (RFC 3986 references, "." and ".."). **`core/media_demux.c`:**
+  audio out of segments: TS (PAT, PMT, the first ADTS/LOAS/MPEG audio
+  stream, PES headers removed; AC-3 refused with a message), packed audio
+  (ID3 tags skipped), fMP4 (the moov's AudioSpecificConfig, then each
+  fragment's samples with an ADTS header added; for HE-AAC the core AAC-LC
+  config goes in the header and faad2 finds SBR/PS in the stream). 66 new
+  unit tests, including synthetic TS and MP4.
+- **The network thread** recognises an HLS playlist (by `#EXT-X-` in it)
+  and runs `hls_play()`: from a master playlist it takes the best
+  audio-only version up to 320 kbps (or the separate audio rendition of a
+  video stream, or the lowest version if all are video); then it reloads
+  the media playlist and feeds each new segment's audio into the same
+  buffer the decoders read, so everything after that (format sniffing,
+  decoders, titles, reconnecting) is shared with ordinary streams. A live
+  stream starts at least three segments and 20 s behind the live edge, for
+  a cushion. Missing segments (404/410) are skipped; three failed playlist
+  reloads in a row count as a drop and the usual reconnect takes over.
+  Encrypted streams (EXT-X-KEY other than NONE) are refused with a message.
+- Now Playing shows "(HLS)" after the format, e.g. "HE-AAC v2 (HLS)".
+
+**Checked here:** 19 of 20 popular HLS stations played for 25 s without
+underruns: BBC Radio 1, 4 and 6 Music, FIP, RTL (HE-AAC v2), RTL 102.5
+(two ID3 tags per segment), RNE, CCTV-13, NHK World (fMP4) and NHK World
+Radio, Air Vividh Bharti, Aaj Tak (a video stream: its audio only), KRAL
+FM, Power POP, powerturk, Radyo Turkuvaz, TRT Türkü, Sinar FM, and an MP3
+HLS stream (天籁之音). KBS refused (HTTP 403, geo-blocked). RTL, NHK World
+and Radyo Turkuvaz ran for 2 minutes with steady playlist reloads. The
+AppImage plays HLS too.
+
+**Not done:** titles carried in HLS ID3 tags (F3), AES-128 encrypted
+streams, AC-3 audio, Opus or FLAC inside fMP4, choosing a lower version
+when the network is slow (it always takes the best up to 320 kbps).
+
+## Linux now playing, F3: artist, song and website (build 43, 2026-11-22)
+
+- **`core/track_info.c`:** `title_split()` splits a stream title at the
+  first " - " (or a spaced en or em dash) when there is text on both
+  sides; otherwise the whole thing is the song. `id3_track()` reads TIT2
+  and TPE1 from ID3v2.2/2.3/2.4 tags (Latin-1, UTF-16 with or without a
+  byte order mark, UTF-8). `notes_web()` and `notes_display()` handle the
+  new `web:<url>` word in a station's Notes. Unit tests for all of them.
+- **HLS titles:** the TS demuxer now also collects timed ID3 metadata
+  (stream type 0x15) and packed-audio segments hand over their leading ID3
+  tag; both go through `id3_track()`.
+- **Now Playing:** the song (bold) on one line, the artist (grey) below it,
+  and a "Website" link on the right of the artist line. The link opens in
+  the desktop's browser (SDL_OpenURL). It comes from `web:` in the
+  station's Notes, otherwise from the stream's `icy-url` header (http and
+  https only). Station, Open Website does the same for the selected
+  station. Station Properties shows a Website line; the Notes column and
+  the Properties notes hide the `web:` and `rb:` words.
+- **`tools/rb_to_stations.py`** adds `web:<homepage>` to the Notes when
+  Radio Browser has a usable http(s) homepage (no "|", control characters
+  or over 200 characters; spaces become %20). A homepage pointing at Radio
+  Garden skips the station, as a stream URL does. The Vita ignores Notes,
+  so its lists are unaffected; the bundled Vita list was not rebuilt.
+- The headless player (`--play`) prints the artist, song and station site
+  at the end.
+
+**Checked here:** artist/song split and icy-url on SomaFM Groove Salad
+(MP3), Nightwave Plaza (Opus tags), Radio Paradise (AAC); unit tests and
+script tests pass. The build 43 AppImage plays and shows titles.
+
+**HLS titles in practice:** of 19 popular HLS stations, only RTL (France)
+sends standard TIT2/TPE1 frames, and they show up (presenter and show,
+e.g. "Isabelle Langé" / "On refait le sport"). Most others carry only the
+Apple timestamp (PRIV); RTL 102.5 puts JSON song data in a TEXT
+(lyricist) frame, which is station-specific and not read. The other 17
+still played; 天籁之音's server was not answering at all (curl timed out
+too).
+
+**Not checked:** the Now Playing layout and the Website link in the GUI
+(clicking opens the browser), long titles at large interface sizes.
+
+## Build 44: two apps, Windows removed, the Linux station list (F4), 2026-11-22
+
+**Decisions (owner, 2026-11-22):**
+- The Vita and Linux apps are separate products in one repo, sharing
+  `core/`. Each has its own `VERSION` and `BUILD` (`vita/`, `linux/`), its
+  own releases (tags `vita-vX.Y.Z`, `linux-vX.Y.Z`; the earlier `v0.9.0` is
+  the Vita's and `v0.9.1` Linux's) and its own bundled list. A full split
+  into two repos was rejected because `core/` would be copied and drift.
+- The Windows port is removed (the owner doesn't use it).
+- The Linux app may download Radio Browser, GeoNames and Natural Earth data
+  when the user asks (for F5); the Vita never goes online for directory
+  data. Recorded in CLAUDE.md and the README.
+- No limits on the Linux list (no cap, no minimum bitrate, every format,
+  HLS included). A map filter may come later if the globe gets cluttered.
+
+**The split:**
+- `desktop/` is now `linux/`, `desktop/linux/` is `linux/share/`,
+  `cmake/desktop.cmake` is `cmake/linux.cmake` (option `DXG_LINUX`, target
+  `dxgarden_linux`), `tools/build_win_deps.sh` is `tools/build_linux_deps.sh`.
+- `VERSION`/`BUILD` moved: Linux 0.9.1, build 44; Vita 0.9.0, build 43
+  (unchanged; the next Vita build is 44).
+- README: status, installing, controls, versions and building are now per
+  app. CLAUDE.md has a "Two apps, one repo" section.
+
+**Windows removed:** `cmake/mingw-w64.cmake`, `dxgarden.rc`,
+`dxgarden.manifest`, the win64 target of the deps script, every `_WIN32`
+branch, the hand-drawn 9x title bar and its hit testing (Linux always used
+the desktop's own frame), and the Windows-only Look menu removal. The
+About box said "for Windows" on Linux too; it now says "for Linux". The
+Classic look (Windows 9x style) stays.
+
+**About box:** "By Aisling de Grás" and aisling@hiraeth.systems, which opens
+the mail program (mailto:).
+
+**F4, the Linux station list** (`assets/stations/linux/stations.txt`):
+- Radio Browser snapshot taken 2026-11-22: 11,105 stations with
+  coordinates (the API's `has_geo_info`); 11,063 written (2.4 MB): MP3
+  7,221, AAC 1,312, AAC+ 1,562, Ogg 109, FLAC 3, HLS 856. Towns from
+  GeoNames cities1000, positions checked against Natural Earth 1:50m
+  countries (v5.1.2). 10,920 stations have a website (`web:`).
+- Rebuild offline (the raw snapshot, GeoNames and Natural Earth files are
+  in `third_party/rb/` and `third_party/geodata/`, not in git):
+  `python3 tools/rb_to_stations.py --from-raw third_party/rb/rb_raw_2026-11-22.json
+  --geonames third_party/geodata/cities1000.zip --borders
+  third_party/geodata/ne_50m_admin_0_countries.geojson --codecs all --hls
+  --max 100000 --max-mb 32 --bundle "for Linux X.Y.Z" -o assets/stations/linux/stations.txt`
+- Script: `flac` codec, `--codecs all`, `--hls` (any codec; noted as e.g.
+  "AAC/HLS", or "HLS" when Radio Browser doesn't know), `--max-mb`, and no
+  `web:` when the "homepage" is just the stream URL.
+- The Linux build reads stations files up to 32 MB (`STATION_FILE_MAX`,
+  overridable; the Vita keeps 8 MB).
+- Loads in 28 ms here: 3,757 places, 183 countries, no errors.
+- Country labels: 356 England, 21 Scotland, 14 Wales, 1 Northern Ireland,
+  3 Isle of Man, 2 Jersey, 1 Guernsey, 44 Ukraine, 2 Occupied West Bank,
+  1 Gaza. **Known miss:** "UK Pressure Radio" is labelled United Kingdom:
+  its pin is in the sea off Cherbourg, so no nation can be told from it.
+- An existing `~/.local/share/dxgarden/stations.txt` is never replaced:
+  rename or delete it to get the new list.
+
+**Checked here:** unit tests (4,650) and script tests (24) pass; a fresh
+data folder gets the new list; 4 of 5 random HLS/AAC+ stations from it
+played (the fifth needs a login, HTTP 401); the build 44 AppImage plays
+and contains the new list.
+
+**Tested by the owner (desktop, build 44 AppImage):** looks good: the new
+list loaded (11,063 stations, 3,757 places), the globe with the full list,
+and Now Playing with song, artist and the Website link (РадиоКанск, Kansk).
+
+**Not checked:** the About box layout.
+The Vita build could not be compiled on this machine: the VitaSDK at
+/usr/local/vitasdk has no vdpm packages (curl, libpng, vita2d, FreeType
+are missing), so this is unrelated to the split; the Vita's own
+VERSION/BUILD are picked up correctly and its core files compile.
+
+## Linux station list download, F5 (build 45, 2026-11-22)
+
+**Decision (owner, 2026-11-22):** the Linux app downloads GeoNames and
+Natural Earth itself (not only Radio Browser), so a list it makes is as
+good as the bundled one. Libraries approved: zlib (to unzip
+`cities1000.zip`) and our own JSON reader. Nothing runs unless the user
+asks; the Vita is unchanged.
+
+**F5a, the list builder in C** (`core/`, Linux and tests only; not in
+the Vita build):
+- `rb_build.c` is a port of `tools/rb_to_stations.py`'s conversion:
+  filters, places, position checks and fixes, country labels (nations of
+  the UK, Crown Dependencies, Ukraine, Gaza, Occupied West Bank), notes,
+  the header and the summary. `json.c` reads JSON, `zip_read.c` takes one
+  file out of a zip with zlib, `ustr.c` gives the Python string behaviour
+  the port needs (lower case, accent folding, stripping), with tables from
+  the Unicode 15.1 database made by `tools/make_unicode_tables.py`
+  (`unitab.c`, about 300 KB of source).
+- The C output is byte-for-byte the script's: `tests/compare_listtool.sh`
+  runs both on the same raw snapshot in 5 configurations (all formats,
+  the Vita's MP3 list, no borders, no towns, 300 stations), and they
+  match. `dxgarden_listtool` is the C side of that comparison. The full
+  list takes 1.1 s in C.
+- One deliberate difference: `rb_query()` leaves out the codec filter
+  when HLS is included, since HLS stations can be any codec (the script
+  asks Radio Browser per codec in that case). The conversion is the same.
+
+**F5b, the download** (`linux/list_download.c`, `linux/list_dialog.c`):
+- File, Download Station List: formats (all ticked, HLS too), countries,
+  tag, lowest bitrate, most stations (100,000 by default, so no real cap),
+  town distance; the cache's date and "Download the town names and
+  borders again".
+- A worker thread: Radio Browser's servers from a DNS lookup of
+  `all.api.radio-browser.info` and each address's name (the documented
+  way), in random order; pages of 500, one a second; each server tried 4
+  times (waiting 2, 4, 8 s) before the next. GeoNames' `cities1000.zip`
+  and Natural Earth 5.1.2's `ne_50m_admin_0_countries.geojson` are kept in
+  `~/.local/share/dxgarden/cache/`. The result goes to
+  `stations-new.txt`; a summary shows; **Replace My Station List** renames
+  `stations.txt` to `stations-backup-<date>.txt` (`-2`, `-3`... if taken),
+  moves the new one in and reloads. Cancel works at any point; closing
+  the window cancels too.
+- `player_tls_setup()` (player.c) gives the download the same
+  certificate search the player uses, which the AppImage's static curl
+  needs.
+- `dxgarden --download-list [--codecs ...] [--hls] [--countries ...]
+  [--max N] [--refresh]` does the same without a window.
+
+**Bug found and fixed (script and C):** when a station's position wins
+over its country ("country corrected to match the position"), the new
+country's name came only from the stations in the snapshot. A download for
+some countries only has no stations from most others, so the label stayed
+wrong: EWTN Great Britain & Ireland, pinned in Birmingham, Alabama, stayed
+"United Kingdom" in a GB/DE/FR download. Now the name falls back to the
+borders file's ADMIN name (tidied the same way, so "United States of
+America" becomes "United States"). Tests added on both sides. Rebuilding
+the bundled Linux list from the same snapshot changed one line: "057
+radio" (a station in Zadar, Croatia whose Radio Browser pin is in
+Libreville) was labelled Ghana and is now Gabon. Its pin is still wrong;
+that's Radio Browser's data. The bundled list's header now says build 45.
+
+**Checked here:** unit tests (4,723) and script tests (24) pass; the
+script and C match on 6 configurations (the 5 above and a GB/DE/FR-only
+snapshot). A real download of everything (all formats, HLS) took 37 s:
+11,110 stations, 11,068 written, in line with the bundled 11,063. A
+download for Ireland and Iceland, then one for GB/DE/FR, through the
+dialog by script: progress, summary, Replace (backups
+`stations-backup-2026-11-22.txt` and `-2.txt`), reload (2,102 stations,
+482 places), Cancel and Back. The build 45 AppImage downloads over HTTPS
+with its own curl.
+
+**Notes:**
+- Only one Radio Browser server answered the name lookup here
+  (de1.api.radio-browser.info), so moving on to the next server after
+  failures isn't tested against a real second server.
+- The progress bar is a rough guide while pages come in (Radio Browser
+  doesn't say how many stations there will be).
+- Replacing the list drops stations added to `stations.txt` by hand or by
+  Place Station (they're in the backup); `import/` is untouched. The
+  dialog says the old list is kept, but not this.
+- "UK Pressure Radio" stays United Kingdom (the known miss from build 44).
+
+**Not checked:** a download on a slow or failing connection; the Vita
+build (still can't compile here; `core/` changes are Linux-only files).
+
+## Linux stations without coordinates, F6 (build 46, 2026-11-22)
+
+Radio Browser has about 53,000 working stations; only 11,000 have
+coordinates. The rest were dropped. Owner's decisions: keep what can be
+placed sensibly, put the rest in **one Country-wide place per country**,
+in its own colour. UK stations with no town or nation are "United
+Kingdom, Country-wide"; Palestinian ones with no town are "Palestine,
+Country-wide" (Nablus and Bethlehem are placed and labelled Occupied
+West Bank as usual).
+
+**Placement**, first that works (`place_without_coords` in the script,
+the same in `core/rb_build.c`):
+1. **Another stream** of the same station (same country, same name, and
+   a website or stream host in common) that has checked coordinates.
+   Without the host check, generic names ("Radio 1") joined the wrong
+   station.
+2. **Region field names a town** of any size in that country ("Augsburg",
+   "Sydney NSW", "Athens Greece"), unless it is also a region and the
+   town is under 1M ("New York" the city wins, "Bavaria" the region).
+3. **A town of 20,000+ in the name**, only in the region if one was
+   given ("Joliet Rocks", region Illinois → Joliet, not Springfield).
+4. **Region field names a region** (GeoNames admin1, its names, letter
+   codes like TX, and a short list of aliases): placed at its capital.
+5. **A region or UK county named in the name or tags** ("Bayern
+   Klassik").
+6. **Country-wide**: Natural Earth's label point for the country
+   (`LABEL_X`/`LABEL_Y`), city "Country-wide". The territory relabelling
+   is skipped there (the label point says nothing about where the
+   station is).
+A region equal to the country's name ("Mexico", a state of Mexico) is
+ignored. UK counties map to a county town (`GB_AREAS`).
+
+**Data:** GeoNames `admin1CodesASCII.txt` (CC BY 4.0, 150 KB), cached
+with the other two files. Queries leave out `has_geo_info` when stations
+without coordinates are wanted, so one download gets everything.
+
+**App:** the dialog's "Stations without coordinates" (on by default),
+`--download-list --without-coords`. `place.country_wide` in
+`core/library.c` (the city folds to "country-wide"); the globe draws
+those dots light blue, a little bigger and on top; the station tree
+lists Country-wide first in each country, with a globe icon.
+
+**Bundled list:** rebuilt from both raw snapshots:
+`python3 tools/rb_to_stations.py --from-raw third_party/rb/rb_raw_2026-11-22.json
+--from-raw third_party/rb/rb_raw_nogeo_2026-11-22.json --geonames
+third_party/geodata/cities1000.zip --borders
+third_party/geodata/ne_50m_admin_0_countries.geojson --admin1
+third_party/geodata/admin1CodesASCII.txt --without-coords --codecs all
+--hls --max 100000 --max-mb 32 --bundle "for Linux X.Y.Z" -o
+assets/stations/linux/stations.txt`.
+51,378 stations (13.6 MB, was 11,063 and 2.5 MB): 21,421 Country-wide,
+7,355 by region's town, 6,310 by region, 4,341 by a town in the name,
+567 by another stream, 321 by a region in the name or tags. 1,195 with no
+country at all are still skipped. 5,285 places (226 countries); the app
+loads it in 116 ms here.
+
+**Checked here:** unit tests (4,755) and script tests (27) pass; the
+script and C match byte for byte on 8 configurations (the 5 before, plus
+without coordinates with borders and regions, without borders, and
+without the regions file). A download for Ireland and Malta with
+`--without-coords`: 207 stations, 95 Country-wide. Screenshots of the
+globe and the dialog.
+
+**Notes:**
+- Placed-by-region stations sit at the region's capital, so a capital
+  can collect stations from all over its region. The Notes say so.
+- Country-wide places are big for some countries (the US, Germany,
+  Brazil have hundreds of stations each in theirs).
+- Town and region matching is by name, so a few will be wrong (a town
+  that shares a name with something else in the station's name). The
+  20,000 population floor and the stopword list keep this down.
+
+A full headless download with the option on (all formats, HLS): 3
+minutes, 51,386 stations written, in line with the bundled 51,378.
+
+**Not checked:** the full download through the dialog (same code as the
+headless run); globe frame rate on slower GPUs with 5,300 dots (fine
+here).
+
+## Release Linux 0.9.2 (beta), 2026-11-24
+
+- **Decision by the tester (2026-11-24):** release the Linux app as 0.9.2,
+  tagged `linux-v0.9.2` (the first tag under the per-app scheme). It holds
+  builds 41 to 46: AAC, Ogg Vorbis, Opus, FLAC and HLS; artist, song and
+  station websites in Now Playing; the larger bundled list (F4); Download
+  Station List (F5); stations without coordinates and Country-wide places
+  (F6). No Vita release: the Vita stays 0.9.0.
+- Build 47: build 46 plus the version bump and README changes. The bundled
+  list is the same snapshot as build 46 (51,378 stations), its header now
+  "shipped with DX Garden for Linux 0.9.2".
+- `linux-port` goes to `main` through a pull request (merge commit), then
+  `linux-v0.9.2` is tagged there and the AppImage is built from that commit
+  with `tools/make_appimage.sh --release`.

@@ -140,6 +140,7 @@ static int new_place(library *lib, int *cap, const char *name, const char *count
     p->lat = lat;
     p->lon = lon;
     p->next_same_key = -1;
+    p->country_wide = p->sort_key && !strcmp(p->sort_key, "country-wide");
     if (!p->name || !p->country || !p->key || !p->sort_key) {
         free(p->name);
         free(p->country);

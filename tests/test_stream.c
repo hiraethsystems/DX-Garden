@@ -204,8 +204,78 @@ static void test_http_and_backoff(void)
     CHECK(reconnect_delay_ms(0) == 1000);
 }
 
+/* Writes `count` frames of `len` bytes, each starting with `hdr`. */
+static size_t frames(unsigned char *out, const unsigned char *hdr, size_t hl, size_t len,
+                     int count)
+{
+    int i;
+    memset(out, 0x55, len * (size_t)count);
+    for (i = 0; i < count; i++)
+        memcpy(out + (size_t)i * len, hdr, hl);
+    return len * (size_t)count;
+}
+
+static void test_audio_sniff(void)
+{
+    /* MPEG-1 layer III, 128 kbps, 44.1 kHz, no padding: 417 bytes. */
+    static const unsigned char mp3h[] = { 0xFF, 0xFB, 0x90, 0x00 };
+    /* MPEG-2 layer III, 64 kbps, 24 kHz: 72 * 64000 / 24000 = 192. */
+    static const unsigned char mp3h2[] = { 0xFF, 0xF3, 0x84, 0x00 };
+    /* ADTS, AAC LC 44.1 kHz stereo, frame length 300 (0x12C). */
+    static const unsigned char adtsh[] = { 0xFF, 0xF1, 0x50, 0x80, 0x25, 0x9F, 0xFC };
+    /* LOAS, 200 bytes of payload: frames of 203. */
+    static const unsigned char loash[] = { 0x56, 0xE0, 0xC8 };
+    static unsigned char buf[4096];
+    unsigned char page[64];
+    size_t n;
+
+    CHECK(audio_sniff(NULL, 0) == AF_UNKNOWN);
+    n = frames(buf, mp3h, sizeof(mp3h), 417, 3);
+    CHECK(audio_sniff(buf, n) == AF_MP3);
+    n = frames(buf, mp3h2, sizeof(mp3h2), 192, 3);
+    CHECK(audio_sniff(buf, n) == AF_MP3);
+    n = frames(buf, adtsh, sizeof(adtsh), 300, 3);
+    CHECK(audio_sniff(buf, n) == AF_ADTS);
+    /* Joined mid-frame: the first whole frame is found. */
+    CHECK(audio_sniff(buf + 100, n - 100) == AF_ADTS);
+    {
+        size_t at;
+        CHECK(audio_sniff_at(buf + 100, n - 100, &at) == AF_ADTS && at == 200);
+    }
+    n = frames(buf, loash, sizeof(loash), 203, 3);
+    CHECK(audio_sniff(buf, n) == AF_LOAS);
+    /* One lone sync with nothing lining up after it. */
+    memset(buf, 0x55, 1000);
+    memcpy(buf + 10, adtsh, sizeof(adtsh));
+    CHECK(audio_sniff(buf, 1000) == AF_UNKNOWN);
+    /* An ID3 tag, then ADTS. */
+    memset(buf, 0, 20);
+    memcpy(buf, "ID3\x04\x00\x00\x00\x00\x00\x0A", 10);
+    n = frames(buf + 20, adtsh, sizeof(adtsh), 300, 3);
+    CHECK(audio_sniff(buf, n + 20) == AF_ADTS);
+    /* Only the tag so far: MP3, as before. */
+    CHECK(audio_sniff(buf, 15) == AF_MP3);
+    CHECK(audio_sniff((const unsigned char *)"OggS\0\2", 6) == AF_OGG);
+    CHECK(audio_sniff((const unsigned char *)"fLaC\0\0", 6) == AF_FLAC);
+
+    /* Ogg: page header, one segment, then the first packet. */
+    memset(page, 0, sizeof(page));
+    memcpy(page, "OggS", 4);
+    page[26] = 1;
+    memcpy(page + 28, "\x01vorbis", 7);
+    CHECK(ogg_sniff(page, sizeof(page)) == OGG_VORBIS);
+    memcpy(page + 28, "OpusHead", 8);
+    CHECK(ogg_sniff(page, sizeof(page)) == OGG_OPUS);
+    memcpy(page + 28, "\x7f" "FLAC\x01\x00\x00", 8);
+    CHECK(ogg_sniff(page, sizeof(page)) == OGG_FLAC);
+    memcpy(page + 28, "Speex   ", 8);
+    CHECK(ogg_sniff(page, sizeof(page)) == OGG_UNKNOWN);
+    CHECK(ogg_sniff(page, 20) == OGG_UNKNOWN);
+}
+
 void run_stream_tests(void)
 {
+    test_audio_sniff();
     test_icy_demux();
     test_icy_title();
     test_classify();

@@ -1,5 +1,5 @@
 /*
- * DX Garden for Windows (and Linux, for development).
+ * DX Garden for Linux.
  *
  *   dxgarden                      the app
  *   dxgarden --play URL --seconds N
@@ -15,6 +15,11 @@
  *                                 wheel X Y CLICKS,
  *                                 wait N, shot FILE,
  *                                 quit. Coordinates are window points.
+ *   --download-list [--codecs LIST] [--hls] [--max N] [--countries LIST]
+ *                   [--without-coords] [--refresh]
+ *                                 no window: builds stations-new.txt in the
+ *                                 data folder as File, Download Station List
+ *                                 does (it doesn't replace stations.txt)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,11 +29,10 @@
 #include <SDL3/SDL_main.h>
 #include <curl/curl.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 #include "app.h"
+#include "fs.h"
+#include "list_download.h"
 #include "draw.h"
 #include "gl.h"
 #include "log.h"
@@ -54,7 +58,6 @@ static const char *state_name(player_state s)
     return "?";
 }
 
-#ifndef _WIN32
 /* Builds before 37 kept Linux data in ~/.local/share/DX Garden/. Moves it
  * to ~/.local/share/dxgarden/ once, if the new folder doesn't exist yet. */
 static void move_old_data_dir(void)
@@ -79,19 +82,14 @@ static void move_old_data_dir(void)
             fprintf(stderr, "could not move %s to %s\n", old_dir, new_dir);
     }
 }
-#endif
 
-/* The data folder: %APPDATA%\DX Garden\ on Windows, $XDG_DATA_HOME/dxgarden/
- * (~/.local/share/dxgarden/) on Linux. Always ends in a separator. */
+/* The data folder: $XDG_DATA_HOME/dxgarden/
+ * (~/.local/share/dxgarden/). Always ends in a separator. */
 static char *data_dir(void)
 {
-#ifdef _WIN32
-    char *d = SDL_GetPrefPath(NULL, "DX Garden");
-#else
     char *d;
     move_old_data_dir();
     d = SDL_GetPrefPath(NULL, "dxgarden");
-#endif
     return d ? d : SDL_strdup("./");
 }
 
@@ -107,7 +105,6 @@ static char *assets_dir(void)
     char *d;
     if (!base)
         return SDL_strdup("./");
-#ifndef _WIN32
     {
         char probe[1100];
         snprintf(probe, sizeof(probe), "%sfonts", base);
@@ -116,7 +113,6 @@ static char *assets_dir(void)
             return d;
         }
     }
-#endif
     d = SDL_strdup(base);
     return d;
 }
@@ -161,14 +157,18 @@ static int run_headless(const char *url, int seconds)
             played = 1;
         if (i % 10 == 9) {
             status_line(&st, line, sizeof(line));
-            printf("%3ds  %-60s buffer %3u%%  %ld Hz %d kbps  decode %u%%  %s\n", i / 10 + 1,
-                   line, st.fill_pct, st.rate, st.bitrate_kbps, st.decode_load_pct, st.title);
+            printf("%3ds  %-40s buffer %3u%%  %s %ld Hz %d kbps  decode %u%%  underruns %u  %s\n",
+                   i / 10 + 1, line, st.fill_pct, st.codec, st.rate, st.bitrate_kbps,
+                   st.decode_load_pct, st.underruns, st.title);
             fflush(stdout);
         }
         if (st.state == PLAYER_ERROR)
             break;
     }
     player_get_status(&st);
+    if (st.song[0] || st.artist[0] || st.icy_url[0])
+        printf("track: artist \"%s\", song \"%s\"%s%s\n", st.artist, st.song,
+               st.icy_url[0] ? ", station site " : "", st.icy_url);
     printf("result: %s%s%s\n", played ? "played" : "did not play",
            st.error[0] ? ", error: " : "", st.error);
     return played ? 0 : 1;
@@ -357,8 +357,6 @@ static int run_window(const char *data, const char *shot, int frames, int start_
     int frame = 0;
     SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
                             SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
-    if (!DXG_NATIVE_FRAME)
-        flags |= SDL_WINDOW_BORDERLESS;
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -372,7 +370,6 @@ static int run_window(const char *data, const char *shot, int frames, int start_
         return 1;
     }
     SDL_SetWindowMinimumSize(win, 480, 360);
-#ifndef _WIN32
     {
         /* Under X11 (SDL's choice on some Wayland desktops, KDE Plasma
          * among them, which then runs it through XWayland), window sizes
@@ -409,7 +406,6 @@ static int run_window(const char *data, const char *shot, int frames, int start_
             SDL_DestroySurface(icon);
         }
     }
-#endif
     gl = SDL_GL_CreateContext(win);
     if (!gl || gl_load(&missing) != 0) {
         char msg[512];
@@ -455,17 +451,32 @@ int main(int argc, char **argv)
     char *script = NULL;
     int seconds = 0, verbose = 0, frames = 30, start_w = WIN_W, start_h = WIN_H, i, rc;
     char *dir;
+    int download = 0, refresh = 0;
+    rb_options ro;
 
-#ifdef _WIN32
-    /* A GUI app has no console; borrow the one it was started from, if
-     * any, so --seconds and --verbose print there. */
-    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
-        freopen("CONOUT$", "w", stdout);
-        freopen("CONOUT$", "w", stderr);
-    }
-#endif
+    rb_options_default(&ro);
     for (i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--play") == 0 && i + 1 < argc)
+        if (strcmp(argv[i], "--download-list") == 0)
+            download = 1;
+        else if (strcmp(argv[i], "--refresh") == 0)
+            refresh = 1;
+        else if (strcmp(argv[i], "--hls") == 0)
+            ro.hls = 1;
+        else if (strcmp(argv[i], "--without-coords") == 0)
+            ro.without_coords = 1;
+        else if (strcmp(argv[i], "--max") == 0 && i + 1 < argc)
+            ro.max = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--codecs") == 0 && i + 1 < argc) {
+            if (rb_parse_codecs(&ro, argv[++i]) != 0) {
+                fprintf(stderr, "unknown codec in '%s'\n", argv[i]);
+                return 2;
+            }
+        } else if (strcmp(argv[i], "--countries") == 0 && i + 1 < argc) {
+            if (rb_parse_countries(&ro, argv[++i]) != 0) {
+                fprintf(stderr, "bad country list '%s'\n", argv[i]);
+                return 2;
+            }
+        } else if (strcmp(argv[i], "--play") == 0 && i + 1 < argc)
             url = argv[++i];
         else if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc)
             seconds = atoi(argv[++i]);
@@ -484,7 +495,7 @@ int main(int argc, char **argv)
     }
 
     SDL_SetAppMetadata("DX Garden", DXG_VERSION, "club.hiraeth.dxgarden");
-    if (!SDL_Init(SDL_INIT_AUDIO | (seconds ? 0 : SDL_INIT_VIDEO))) {
+    if (!SDL_Init(SDL_INIT_AUDIO | (seconds || download ? 0 : SDL_INIT_VIDEO))) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
@@ -506,7 +517,11 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (seconds > 0 && url)
+    if (download) {
+        fs_set_dirs(dir, "");
+        log_to_stderr(1);
+        rc = list_download_headless(&ro, refresh);
+    } else if (seconds > 0 && url)
         rc = run_headless(url, seconds);
     else
         rc = run_window(dir, shot, frames, start_w, start_h, script);

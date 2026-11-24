@@ -8,15 +8,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifdef _WIN32
-#include <direct.h>
-#include <io.h>
-/* MinGW has no mkdtemp; this is enough for one temp dir per run. */
-static char *mkdtemp(char *tmpl)
-{
-    return _mktemp(tmpl) && _mkdir(tmpl) == 0 ? tmpl : NULL;
-}
-#endif
 
 #include "config.h"
 #include "library.h"
@@ -316,10 +307,33 @@ static void test_library(void)
     CHECK(strcmp(lib.genres[0].key, "jazz") == 0 && lib.genres[0].n == 2);
     CHECK(strcmp(lib.genres[1].key, "rock") == 0 && lib.genres[1].n == 1);
 
+    for (i = 0; i < lib.n_places; i++)
+        CHECK(!lib.places[i].country_wide);
+
     for (i = 1; i < lib.n_places; i++)
         CHECK(strcmp(lib.places[lib.places_by_name[i - 1]].sort_key,
                      lib.places[lib.places_by_name[i]].sort_key) <= 0);
 
+    library_free(&lib);
+    report_free(&r);
+
+    /* Stations placed only by their country share one Country-wide place
+     * per country, marked as such. */
+    station_list_init(&in);
+    report_init(&r);
+    library_init(&lib);
+    add(&in, "One", "http://1", "Germany", "Country-wide", 51.1, 10.4, "");
+    add(&in, "Two", "http://2", "Germany", "country-wide", 51.1, 10.4, "");
+    add(&in, "Three", "http://3", "Germany", "Erfurt", 50.98, 11.03, "");
+    add(&in, "Four", "http://4", "Ireland", "Country-wide", 53.2, -8.0, "");
+    CHECK(library_build(&lib, &in, &r) == 0);
+    CHECK(lib.n_places == 3);
+    p = place_of(&lib, "http://1");
+    CHECK(p >= 0 && p == place_of(&lib, "http://2") && lib.places[p].country_wide);
+    p = place_of(&lib, "http://3");
+    CHECK(p >= 0 && !lib.places[p].country_wide);
+    p = place_of(&lib, "http://4");
+    CHECK(p >= 0 && lib.places[p].country_wide && p != place_of(&lib, "http://1"));
     library_free(&lib);
     report_free(&r);
 
@@ -499,14 +513,7 @@ static void test_sources(void)
     load_report r;
     static const char latin1[] = "Caf\xE9 FM | http://cafe.example/ | France | Paris | 48.85 | 2.35\n";
 
-#ifdef _WIN32
-    {
-        const char *t = getenv("TEMP");
-        snprintf(tmpdir, sizeof(tmpdir), "%s\\dxg_test_XXXXXX", t ? t : ".");
-    }
-#else
     strcpy(tmpdir, "/tmp/dxg_test_XXXXXX");
-#endif
     if (!mkdtemp(tmpdir)) {
         CHECK(!"mkdtemp failed");
         return;

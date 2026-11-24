@@ -32,7 +32,11 @@ struct station_source {
 typedef int (*dir_list_fn)(const char *dir,
                            void (*emit)(const char *name, void *ud), void *ud);
 
+/* Largest stations.txt or playlist read. The Vita keeps 8 MB; the desktop
+ * build raises it for its bigger list. */
+#ifndef STATION_FILE_MAX
 #define STATION_FILE_MAX (8u * 1024 * 1024)
+#endif
 
 station_source *stations_file_source_new(const char *path);
 station_source *playlist_dir_source_new(const char *dir, dir_list_fn list);
