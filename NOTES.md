@@ -2168,3 +2168,25 @@ here).
 - `linux-port` goes to `main` through a pull request (merge commit), then
   `linux-v0.9.2` is tagged there and the AppImage is built from that commit
   with `tools/make_appimage.sh --release`.
+
+## The Linux app moves to its own repository, 2026-11-24
+
+- **Owner's decision (2026-11-24):** one repository for two apps was
+  confusing. DX Garden for Linux now lives in
+  `hiraethsystems/DX-Garden-Linux`, made from this repository's `main` at
+  the 0.9.2 merge (`4b5ea62`) with its history (Vita files left out). Its
+  first release there is Linux 0.9.2 (`linux-v0.9.2`, build 47); the Linux
+  0.9.1 release (`v0.9.1`) stays here.
+- This repository is the Vita app only again. Removed: `linux/`,
+  `cmake/linux.cmake`, the Linux station list (`assets/stations/linux/`),
+  the Liberation Sans fonts, the station-list builder that only the Linux
+  app used (`core/json`, `rb_build`, `unitab`, `ustr`, `zip_read`, their
+  tests and `dxgarden_listtool`), and the Linux build tools
+  (`make_appimage.sh`, `build_linux_deps.sh`, `make_earth.py`,
+  `make_unicode_tables.py`). `tools/rb_to_stations.py` stays: it builds the
+  Vita's list too.
+- `CMakeLists.txt` builds the Vita app, or `core/`'s unit tests on Linux
+  (4,660 checks; zlib no longer needed). README and CLAUDE.md describe the
+  Vita app and point to the Linux repository. The Vita build itself isn't
+  compiled here (no VitaSDK on this machine); none of the removed files
+  were part of it.

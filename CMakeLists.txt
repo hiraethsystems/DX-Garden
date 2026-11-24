@@ -1,19 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 
-# Two apps from one source tree, sharing core/:
+# DX Garden for PS Vita (the Linux app is in hiraethsystems/DX-Garden-Linux):
 #   Vita:  cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=$VITASDK/share/vita.toolchain.cmake
-#   Linux: cmake -S . -B build-linux -G Ninja -DDXG_LINUX=ON   (the app and the tests)
-#          cmake -S . -B build-test                            (core/ unit tests only)
+#   Tests: cmake -S . -B build-test        (core/ unit tests, on Linux)
 project(dxgarden C)
 
-# Versions (README, "Versions"), one pair per app, in vita/ and linux/:
+# Versions (README, "Versions"), in vita/:
 #   VERSION  the release version, MAJOR.MINOR.PATCH, minor and patch 0-9.
 #   BUILD    goes up by one for every build handed over for testing.
-if(VITA)
-    set(DXG_APP_DIR "${CMAKE_SOURCE_DIR}/vita")
-else()
-    set(DXG_APP_DIR "${CMAKE_SOURCE_DIR}/linux")
-endif()
+set(DXG_APP_DIR "${CMAKE_SOURCE_DIR}/vita")
 file(STRINGS "${DXG_APP_DIR}/VERSION" DXG_VERSION LIMIT_COUNT 1)
 file(STRINGS "${DXG_APP_DIR}/BUILD" DXG_BUILD LIMIT_COUNT 1)
 # Re-run CMake when either changes, so a bumped BUILD reaches the binary.
@@ -46,16 +41,6 @@ endif()
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-
-# Building a station list from Radio Browser (Linux only, not the Vita):
-# portable C, plus zlib for GeoNames' zip.
-set(RB_SOURCES
-    core/json.c
-    core/rb_build.c
-    core/unitab.c
-    core/ustr.c
-    core/zip_read.c
-)
 
 set(CORE_SOURCES
     core/bidi_order.c
@@ -168,17 +153,9 @@ if(VITA)
         FILE assets/map/lines.bin map/lines.bin
     )
 else()
-    # The Linux app (linux/). Libraries from tools/build_linux_deps.sh.
-    option(DXG_LINUX "Build the Linux app" OFF)
-    if(DXG_LINUX)
-        include(cmake/linux.cmake)
-    endif()
-
-    find_package(ZLIB REQUIRED)
+    # core/'s unit tests, on Linux.
     add_executable(dxgarden_test
         ${CORE_SOURCES}
-        ${RB_SOURCES}
-        tests/test_rb.c
         tests/test_main.c
         tests/test_library.c
         tests/test_globe.c
@@ -194,14 +171,7 @@ else()
     target_compile_options(dxgarden_test PRIVATE -Wall -Wextra -Wpedantic -g)
     target_compile_options(dxgarden_test PRIVATE -fsanitize=address,undefined)
     target_link_options(dxgarden_test PRIVATE -fsanitize=address,undefined)
-    target_link_libraries(dxgarden_test ZLIB::ZLIB m)
-
-    # The station-list builder from the command line, to compare it with
-    # tools/rb_to_stations.py (tests/compare_listtool.sh).
-    add_executable(dxgarden_listtool ${CORE_SOURCES} ${RB_SOURCES} tests/listtool.c)
-    target_include_directories(dxgarden_listtool PRIVATE core)
-    target_compile_options(dxgarden_listtool PRIVATE -Wall -Wextra -O2 -g)
-    target_link_libraries(dxgarden_listtool ZLIB::ZLIB m)
+    target_link_libraries(dxgarden_test m)
 
     enable_testing()
     add_test(NAME core COMMAND dxgarden_test)
