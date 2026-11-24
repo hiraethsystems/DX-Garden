@@ -2187,6 +2187,14 @@ here).
   Vita's list too.
 - `CMakeLists.txt` builds the Vita app, or `core/`'s unit tests on Linux
   (4,660 checks; zlib no longer needed). README and CLAUDE.md describe the
-  Vita app and point to the Linux repository. The Vita build itself isn't
-  compiled here (no VitaSDK on this machine); none of the removed files
-  were part of it.
+  Vita app and point to the Linux repository.
+- **Vita build checked after the split (2026-11-24).** VitaSDK 2026.08 is at
+  `/usr/local/vitasdk` (set in `~/.bashrc`) but had none of the vdpm
+  packages the app links, so earlier "can't compile here" notes were about
+  that. Installed with the owner's OK: `vdpm install curl-mbedtls mbedtls
+  zstd mpg123 freetype harfbuzz fribidi libpng libjpeg-turbo zlib bzip2
+  vitaGL vitaShaRK libmathneon libvita2d taihen` (SceShaccCgExt came with
+  them). `main` then builds `dxgarden-0.9.0-b43.vpk` with no warnings from
+  the app's code (one linker note about the SDK's own `crtn.o`). Not run on
+  a Vita: nothing in `vita/` changed, only files it never used were
+  removed.
