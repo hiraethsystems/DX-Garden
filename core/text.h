@@ -1,7 +1,7 @@
 /* Text helpers: trimming, UTF-8 checks and conversion, sort/match keys,
  * line splitting, whole-file reading. */
-#ifndef DXG_TEXT_H
-#define DXG_TEXT_H
+#ifndef ENSO_TEXT_H
+#define ENSO_TEXT_H
 
 #include <stddef.h>
 #include <stdint.h>

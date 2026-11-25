@@ -1,6 +1,6 @@
 /* The app's loaded data: library, load report, favourites, recent, config. */
-#ifndef DXG_DATA_H
-#define DXG_DATA_H
+#ifndef ENSO_DATA_H
+#define ENSO_DATA_H
 
 #include "config.h"
 #include "library.h"

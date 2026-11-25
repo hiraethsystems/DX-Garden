@@ -1,7 +1,7 @@
 /* The app's screens: station library, menus, overlays, and the flows for
  * placing imported stations and adding stations by URL. */
-#ifndef DXG_APP_H
-#define DXG_APP_H
+#ifndef ENSO_APP_H
+#define ENSO_APP_H
 
 #include <psp2/ctrl.h>
 

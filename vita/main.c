@@ -5,6 +5,7 @@
 #include <curl/curl.h>
 #include <psp2/ctrl.h>
 #include <psp2/io/fcntl.h>
+#include <psp2/io/stat.h>
 #include <psp2/kernel/cpu.h>
 #include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/threadmgr.h>
@@ -99,7 +100,7 @@ static int power_cb(int notify_id, int notify_count, int arg, void *user)
 
 static void power_setup(void)
 {
-    SceUID cb = sceKernelCreateCallback("dxg_power", 0, power_cb, NULL);
+    SceUID cb = sceKernelCreateCallback("enso_power", 0, power_cb, NULL);
     int rc = cb >= 0 ? scePowerRegisterCallback(cb) : cb;
     if (rc < 0)
         LOG("power: no callback (0x%08X); resume is found by the clock alone", rc);
@@ -125,6 +126,22 @@ static void fatal_screen(const char *title, const char *detail)
     } while (!(pad.buttons & SCE_CTRL_START));
 }
 
+/* Moves the data folder of 0.9.1 and earlier to DATA_DIR once, if DATA_DIR
+ * doesn't exist yet, so stations, favourites and settings carry over.
+ * Returns 0 if there was nothing to move, 1 if moved, or a negative
+ * error from sceIoRename. */
+static int move_old_data_dir(void)
+{
+    SceIoStat st;
+    int r;
+    if (sceIoGetstat(DATA_DIR, &st) >= 0)
+        return 0;
+    if (sceIoGetstat(OLD_DATA_DIR, &st) < 0 || !SCE_S_ISDIR(st.st_mode))
+        return 0;
+    r = sceIoRename(OLD_DATA_DIR, DATA_DIR);
+    return r < 0 ? r : 1;
+}
+
 int main(void)
 {
     static app_data data;
@@ -138,15 +155,19 @@ int main(void)
     player_state last_state = PLAYER_IDLE;
     SceUInt64 last_wall = 0, last_proc = 0, last_resume = 0;
     int was_off = 0;
+    int moved_old;
 
     fs_mkdir("ux0:data");
+    moved_old = move_old_data_dir();
     fs_mkdir(DATA_DIR);
     if (fs_exists(PATH_LOG)) {
         sceIoRemove(PATH_LOG_PREV);
         sceIoRename(PATH_LOG, PATH_LOG_PREV);
     }
     log_open(PATH_LOG);
-    LOG("Ensō Radio " DXG_VERSION " (build " DXG_BUILD ") starting");
+    LOG("Ensō Radio " ENSO_VERSION " (build " ENSO_BUILD ") starting");
+    if (moved_old)
+        LOG("data: moved " OLD_DATA_DIR " to " DATA_DIR " (%d)", moved_old);
     /* The main loop keeps core 0; the player threads use cores 1 and 2. */
     {
         int rc = sceKernelChangeThreadCpuAffinityMask(sceKernelGetThreadId(),
@@ -191,7 +212,7 @@ int main(void)
     if (net_init() < 0 || player_init(RING_CAPACITY) < 0) {
         fatal_screen("Could not start",
                      "Networking or the audio player failed to initialise. "
-                     "See " LOG_NAME " in ux0:data/dxgarden/ for details.");
+                     "See " LOG_NAME " in ux0:data/ensoradio/ for details.");
         gfx_shutdown();
         log_close();
         sceKernelExitProcess(0);

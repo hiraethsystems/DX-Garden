@@ -1,10 +1,12 @@
-/* Files and folders under ux0:data/dxgarden/. */
-#ifndef DXG_FS_H
-#define DXG_FS_H
+/* Files and folders under ux0:data/ensoradio/. */
+#ifndef ENSO_FS_H
+#define ENSO_FS_H
 
 #include <stddef.h>
 
-#define DATA_DIR "ux0:data/dxgarden"
+#define DATA_DIR "ux0:data/ensoradio"
+/* Where 0.9.1 and earlier kept their data; moved to DATA_DIR once. */
+#define OLD_DATA_DIR "ux0:data/dxgarden"
 #define IMPORT_DIR DATA_DIR "/import"
 #define PATH_STATIONS DATA_DIR "/stations.txt"
 /* The default list shipped in the VPK (tools/rb_to_stations.py --bundle). */
@@ -13,10 +15,10 @@
 #define PATH_RECENT DATA_DIR "/recent.txt"
 #define PATH_CONFIG DATA_DIR "/config.ini"
 /* One log per build: log-0.9.0-b29.txt. */
-#define LOG_NAME "log-" DXG_VERSION "-b" DXG_BUILD ".txt"
+#define LOG_NAME "log-" ENSO_VERSION "-b" ENSO_BUILD ".txt"
 #define PATH_LOG DATA_DIR "/" LOG_NAME
 /* The run before, so testing over several launches keeps two logs. */
-#define PATH_LOG_PREV DATA_DIR "/log-" DXG_VERSION "-b" DXG_BUILD "-previous.txt"
+#define PATH_LOG_PREV DATA_DIR "/log-" ENSO_VERSION "-b" ENSO_BUILD "-previous.txt"
 #define PATH_ADDED_M3U IMPORT_DIR "/added-by-url.m3u"
 
 void fs_mkdir(const char *path);

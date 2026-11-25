@@ -1,8 +1,8 @@
 /* The globe screen: draws the textured globe, place dots and crosshair,
  * and turns stick, d-pad, L/R and front-touch input into movement.
  * Station choice, the panel and the top bar stay in app.c. */
-#ifndef DXG_GLOBE_VIEW_H
-#define DXG_GLOBE_VIEW_H
+#ifndef ENSO_GLOBE_VIEW_H
+#define ENSO_GLOBE_VIEW_H
 
 #include "library.h"
 

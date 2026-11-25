@@ -48,7 +48,7 @@ nothing beyond Python, can check streams, and can show a map.
    rules, cleaning) out of `rb_to_stations.py` into a module both tools use,
    so the bundled list and your own lists always follow the same rules.
    Add a Python reader and checker for `stations.txt` that matches the app's
-   parser, tested against `dxgarden_test`.
+   parser, tested against `ensoradio_test`.
 2. **Command-line core.** `tools/station_helper.py` with `check`, `place`
    (prompting for a town) and `import` (M3U/PLS) commands. Useful on its own,
    and the base for the window.

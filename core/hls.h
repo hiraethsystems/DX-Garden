@@ -8,8 +8,8 @@
  * numbers, the fMP4 initialisation section (EXT-X-MAP), the end marker, and
  * whether the segments are encrypted.
  */
-#ifndef DXG_HLS_H
-#define DXG_HLS_H
+#ifndef ENSO_HLS_H
+#define ENSO_HLS_H
 
 #include <stddef.h>
 

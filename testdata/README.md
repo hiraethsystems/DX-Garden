@@ -4,10 +4,10 @@ Copy these to the Vita to exercise loading, grouping and imports. They only
 contain the M1 test streams (Radio Paradise and KEXP) and deliberately broken
 lines. They are not a station list and are not shipped in the VPK.
 
-- `stations-test.txt`: copy to `ux0:data/dxgarden/stations.txt`. It has
+- `stations-test.txt`: copy to `ux0:data/ensoradio/stations.txt`. It has
   4 good lines and 4 broken ones (the load report should list 4 skipped).
 - `import/test.m3u`, `import/test.pls`: copy into
-  `ux0:data/dxgarden/import/`. All of their stations should show under
+  `ux0:data/ensoradio/import/`. All of their stations should show under
   Unplaced, except the ones already in stations.txt.
 
 ## Expected result (checked on Linux with the same core/ code)
@@ -25,7 +25,7 @@ lines. They are not a station list and are not shipped in the VPK.
 
 ## Globe test (from build 00.07)
 
-- `stations-globe-test.txt`: copy to `ux0:data/dxgarden/stations.txt`
+- `stations-globe-test.txt`: copy to `ux0:data/ensoradio/stations.txt`
   (rename it). It places the same three test streams in 14 cities, using
   `?test=` tags to keep each URL unique. Expected: 17 stations in 14 places
   and 0 skipped. Berlin has 3 stations, for testing the station arrows.
@@ -38,6 +38,6 @@ lines. They are not a station list and are not shipped in the VPK.
   `tools/rb_to_stations.py --max 36`, from a Radio Browser
   (radio-browser.info) snapshot taken on 2026-10-18. City names come from
   GeoNames (geonames.org, CC BY 4.0).
-- `dxgarden_test` parses and groups it, and expects 0 malformed lines.
+- `ensoradio_test` parses and groups it, and expects 0 malformed lines.
 - It can also go on the Vita as `stations.txt`. Expect some dead or oddly
   placed streams: the data is only as good as Radio Browser's.

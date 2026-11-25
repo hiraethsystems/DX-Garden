@@ -15,8 +15,8 @@
  * Duplicate stream URLs: the first one loaded wins. stations.txt loads
  * first, so placing an imported station hides its import entry.
  */
-#ifndef DXG_LIBRARY_H
-#define DXG_LIBRARY_H
+#ifndef ENSO_LIBRARY_H
+#define ENSO_LIBRARY_H
 
 #include "load_report.h"
 #include "station.h"

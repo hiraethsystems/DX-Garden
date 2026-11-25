@@ -14,7 +14,7 @@ The texture gives land and sea. The lines are drawn on top by the app as
 real geometry, so coastlines stay sharp at any zoom.
 
 lines.bin format (little-endian):
-  "DXGL", u32 version (1), u32 tiles_x, u32 tiles_y, u32 layers
+  "ENSL", u32 version (1), u32 tiles_x, u32 tiles_y, u32 layers
   for each layer, for each tile (row from the north, column from -180):
       u32 first_point, u32 point_count      (points come in pairs: GL_LINES)
   then all points: i16 lon, i16 lat, scaled so 32767 = 180 / 90 degrees.
@@ -145,7 +145,7 @@ def write_lines(layers, path):
                 points.append((q(b[0], 180), q(b[1], 90)))
         tables.append(table)
     with open(path, "wb") as f:
-        f.write(b"DXGL" + struct.pack("<4I", 1, TILES_X, TILES_Y, len(layers)))
+        f.write(b"ENSL" + struct.pack("<4I", 1, TILES_X, TILES_Y, len(layers)))
         for table in tables:
             for first, count in table:
                 f.write(struct.pack("<2I", first, count))

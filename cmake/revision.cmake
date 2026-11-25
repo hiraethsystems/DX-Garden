@@ -1,4 +1,4 @@
-# Writes OUT (a header) with DXG_REVISION: the short git commit the build
+# Writes OUT (a header) with ENSO_REVISION: the short git commit the build
 # came from, plus "-modified" if tracked files have uncommitted changes.
 # Run on every build; the file is only rewritten when the value changes.
 execute_process(COMMAND git rev-parse --short=7 HEAD
@@ -14,7 +14,7 @@ else()
         set(rev "${rev}-modified")
     endif()
 endif()
-set(text "#define DXG_REVISION \"${rev}\"\n")
+set(text "#define ENSO_REVISION \"${rev}\"\n")
 if(EXISTS "${OUT}")
     file(READ "${OUT}" old)
 endif()

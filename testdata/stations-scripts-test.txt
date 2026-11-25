@@ -1,4 +1,4 @@
-# DX Garden script test: names and places in the scripts added in 00.12.
+# Ensō Radio script test: names and places in the scripts added in 00.12.
 # Every line plays one of the M1 test streams (Radio Paradise MP3); the
 # ?test= tag only keeps the URLs unique.
 # Arabic, right to left, with digits and with Latin mixed in.

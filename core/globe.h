@@ -6,8 +6,8 @@
  * Screen convention: x to the right, y downwards, in pixels relative to
  * the globe centre on screen. North is always up.
  */
-#ifndef DXG_GLOBE_H
-#define DXG_GLOBE_H
+#ifndef ENSO_GLOBE_H
+#define ENSO_GLOBE_H
 
 #include "library.h"
 

@@ -5,8 +5,8 @@
  *   - artist and title from an ID3v2 tag (HLS streams carry them so),
  *   - a station's website from its notes ("web:https://...").
  */
-#ifndef DXG_TRACK_INFO_H
-#define DXG_TRACK_INFO_H
+#ifndef ENSO_TRACK_INFO_H
+#define ENSO_TRACK_INFO_H
 
 #include <stddef.h>
 

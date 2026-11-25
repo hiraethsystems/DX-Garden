@@ -137,7 +137,7 @@ static int load_lines(void)
 
     if (!buf)
         return -1;
-    if (len < 20 || memcmp(buf, "DXGL", 4) != 0 || rd32(buf + 4) != 1)
+    if (len < 20 || memcmp(buf, "ENSL", 4) != 0 || rd32(buf + 4) != 1)
         goto bad;
     L.tiles_x = (int)rd32(buf + 8);
     L.tiles_y = (int)rd32(buf + 12);
@@ -202,7 +202,7 @@ static int loader_thread(SceSize args, void *argp)
 void globe_view_preload(void)
 {
     memset(&L, 0, sizeof(L));
-    L.thid = sceKernelCreateThread("dxg_map_load", loader_thread, 0x10000100, 0x10000, 0, 0,
+    L.thid = sceKernelCreateThread("enso_map_load", loader_thread, 0x10000100, 0x10000, 0, 0,
                                    NULL);
     if (L.thid < 0 || sceKernelStartThread(L.thid, 0, NULL) < 0) {
         LOG("globe: loader thread failed (0x%08X), loading on the main thread", L.thid);

@@ -1,6 +1,6 @@
 # Ensō Radio
 
-*Formerly DX Garden.* 
+
 A radio player and explorer for the PS Vita (homebrew, HENkaku/ensō), in
 the spirit of spinning a globe and listening to what's on air somewhere
 else: MP3 stations on a globe you spin with the sticks. Latest release:
@@ -72,13 +72,13 @@ You need a PS Vita running HENkaku or ensō with
 2. **Install the VPK.** Copy the latest VPK (`ensoradio-<version>.vpk`;
    0.9.0 is `dxgarden-0.9.0.vpk`) to the Vita and install it
    with VitaShell.
-3. **Start it.** The first start creates `ux0:data/dxgarden/` with the
+3. **Start it.** The first start creates `ux0:data/ensoradio/` with the
    bundled station list and opens on the globe.
 
-To update, install the new VPK over the old one. The data folder keeps its old
-name, `ux0:data/dxgarden/`, so a DX Garden install updates in place to
-Ensō Radio with your stations, favourites and settings intact. Your `stations.txt`,
-favourites, recently played and settings are kept. If the bubble still
+To update, install the new VPK over the old one. On its first start, build 45
+and later move the data folder of 0.9.1 and earlier (`ux0:data/dxgarden/`) to
+`ux0:data/ensoradio/`, so your `stations.txt`, favourites, recently played and
+settings are kept. If the bubble still
 shows old artwork, use VitaShell's "Refresh LiveArea" or reinstall.
 
 ## Vita controls
@@ -106,9 +106,9 @@ Stop the crosshair on a place and it starts playing after a moment.
 The release number is MAJOR.MINOR.PATCH (`vita/VERSION`), and the build
 number for test builds (`vita/BUILD`) only goes up. The app, the log and
 test VPKs show both, e.g. "0.9.0 (build 29)" and `ensoradio-0.9.0-b44.vpk`
-(builds up to 43 were named `dxgarden-…`).
+(builds up to 43 have an older file name).
 Releases are named without the build number (build with
-`-DDXG_RELEASE=ON`). `v0.9.0` is the Vita's release tag; `v0.9.1` was the
+`-DENSO_RELEASE=ON`). `v0.9.0` is the Vita's release tag; `v0.9.1` was the
 Linux app's, from before it moved to its own repository. Later Vita
 releases would be tagged `vita-vX.Y.Z`.
 
@@ -128,12 +128,12 @@ cmake --build build
 ```
 
 This produces `build/ensoradio-<version>-b<build>.vpk`, or
-`build/ensoradio-<version>.vpk` when configured with `-DDXG_RELEASE=ON`.
+`build/ensoradio-<version>.vpk` when configured with `-DENSO_RELEASE=ON`.
 
 The portable core has Linux unit tests:
 
 ```sh
-cmake -S . -B build-test && cmake --build build-test && ./build-test/dxgarden_test
+cmake -S . -B build-test && cmake --build build-test && ./build-test/ensoradio_test
 ```
 
 ## Building a station list (optional)
@@ -162,7 +162,7 @@ python3 tools/rb_to_stations.py --geonames cities1000.zip \
 python3 tools/rb_to_stations.py --help   # countries, codecs, bitrate, tag, --check, --save-raw
 ```
 
-Copy the result to `ux0:data/dxgarden/stations.txt`. It keeps MP3
+Copy the result to `ux0:data/ensoradio/stations.txt`. It keeps MP3
 stations by default, since that is the only format the app plays.
 The bundled list was made this way, with `--bundle <version>` for its
 header.
@@ -195,7 +195,7 @@ background.
 
 ## Files on the Vita
 
-All in `ux0:data/dxgarden/`. They are created on first run if missing.
+All in `ux0:data/ensoradio/`. They are created on first run if missing.
 
 - `stations.txt`: your stations, one per line:
   `Name | Stream URL | Country | City | Latitude | Longitude | Genre | Notes`.

@@ -7,8 +7,8 @@
  * N audio bytes again, and so on. The demuxer strips the metadata out and
  * reports title changes.
  */
-#ifndef DXG_ICY_H
-#define DXG_ICY_H
+#ifndef ENSO_ICY_H
+#define ENSO_ICY_H
 
 #include <stddef.h>
 

@@ -7,8 +7,8 @@
  * on the globe and goes to the previous tab in the list), but within one
  * view each button has at most one action.
  */
-#ifndef DXG_CONTROLS_H
-#define DXG_CONTROLS_H
+#ifndef ENSO_CONTROLS_H
+#define ENSO_CONTROLS_H
 
 #include "config.h"
 

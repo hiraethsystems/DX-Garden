@@ -10,8 +10,8 @@
  * player_stop() only requests a stop, and player_update() reaps finished
  * threads and starts any stream queued while the old one was stopping.
  */
-#ifndef DXG_PLAYER_H
-#define DXG_PLAYER_H
+#ifndef ENSO_PLAYER_H
+#define ENSO_PLAYER_H
 
 #include <stddef.h>
 #include <stdint.h>

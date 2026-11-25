@@ -9,8 +9,8 @@
  * through FriBidi (right-to-left order) and HarfBuzz (joining, marks), and
  * the result is cached.
  */
-#ifndef DXG_FONT_H
-#define DXG_FONT_H
+#ifndef ENSO_FONT_H
+#define ENSO_FONT_H
 
 #include <stdint.h>
 

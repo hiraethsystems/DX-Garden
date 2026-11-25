@@ -6,8 +6,8 @@
  *   - plain-language messages for HTTP status codes,
  *   - which failures are worth retrying, and the reconnect back-off.
  */
-#ifndef DXG_STREAM_INFO_H
-#define DXG_STREAM_INFO_H
+#ifndef ENSO_STREAM_INFO_H
+#define ENSO_STREAM_INFO_H
 
 #include <stddef.h>
 

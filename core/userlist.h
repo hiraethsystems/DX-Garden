@@ -1,8 +1,8 @@
 /* Ordered list of stream URLs: favourites.txt and recent.txt. One URL per
  * line, '#' comments allowed. Stations are matched by URL so the lists
  * survive edits to stations.txt. */
-#ifndef DXG_USERLIST_H
-#define DXG_USERLIST_H
+#ifndef ENSO_USERLIST_H
+#define ENSO_USERLIST_H
 
 #include <stddef.h>
 

@@ -1709,9 +1709,9 @@ static const char *empty_text(void)
     switch (A.tab) {
     case TAB_COUNTRIES:
     case TAB_CITIES:
-        return "No stations yet. Add your own to ux0:data/dxgarden/stations.txt (it explains "
+        return "No stations yet. Add your own to ux0:data/ensoradio/stations.txt (it explains "
                "the format and has examples), put M3U or PLS files in "
-               "ux0:data/dxgarden/import/, or press START and choose Add station by URL.";
+               "ux0:data/ensoradio/import/, or press START and choose Add station by URL.";
     case TAB_GENRES:
         return "No genres yet. Genre is the seventh field of a line in stations.txt.";
     case TAB_FAVOURITES:
@@ -1965,7 +1965,7 @@ static void draw_details(const player_status *st, const sys_status *sys)
         gfx_text_fit(64, y, SCREEN_W - 128, COL_DIM, 17, 0, buf);
     }
     y += 26;
-    snprintf(buf, sizeof(buf), "Ensō Radio " DXG_VERSION " (build " DXG_BUILD ")   ARM %d MHz",
+    snprintf(buf, sizeof(buf), "Ensō Radio " ENSO_VERSION " (build " ENSO_BUILD ")   ARM %d MHz",
              sys->arm_mhz);
     gfx_text(64, y, COL_DIM, 15, 0, buf);
 
@@ -2148,7 +2148,7 @@ static void draw_about(int x0, int y0, int w, int h)
     gfx_text(x, y, COL_TEXT, 34, 1, "Ensō Radio");
     y += 34;
     gfx_text(x, y, COL_DIM, 19, 0,
-             "Version " DXG_VERSION " (build " DXG_BUILD ")   Commit " DXG_REVISION);
+             "Version " ENSO_VERSION " (build " ENSO_BUILD ")   Commit " ENSO_REVISION);
     y += 34;
     gfx_text_wrap(x, y, w - 64, 26, 3, COL_DIM, 17,
                   "A radio explorer for the PS Vita. It comes with a station list from Radio "
@@ -2221,7 +2221,7 @@ static void draw_settings(void)
             value = "";
         } else {
             label = "About Ensō Radio";
-            value = DXG_VERSION;
+            value = ENSO_VERSION;
             vcol = COL_DIM;
         }
         gfx_text(x0 + 32, y + 21, COL_TEXT, 19, sel, label);

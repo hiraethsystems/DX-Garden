@@ -77,8 +77,8 @@ def load_lines():
     with open(MAP_LINES, "rb") as f:
         data = f.read()
     magic, _ver, tx, ty, layers = struct.unpack_from("<4sIIII", data, 0)
-    if magic != b"DXGL":
-        raise SystemExit(MAP_LINES + ": not a DXGL file")
+    if magic != b"ENSL":
+        raise SystemExit(MAP_LINES + ": not a ENSL file")
     off = 20
     index = struct.unpack_from("<%dI" % (layers * tx * ty * 2), data, off)
     off += layers * tx * ty * 8

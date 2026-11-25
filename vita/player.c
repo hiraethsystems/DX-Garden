@@ -21,7 +21,7 @@
 #define GRAIN 1024        /* samples per sceAudioOutOutput call */
 #define READ_CHUNK 4096   /* compressed bytes per decoder read */
 #define CA_BUNDLE "app0:cacert.pem"
-#define USER_AGENT "EnsoRadio/" DXG_VERSION " (PS Vita)"
+#define USER_AGENT "EnsoRadio/" ENSO_VERSION " (PS Vita)"
 
 #define THREAD_PRIO_DEFAULT 0x10000100
 #define NET_STACK (512 * 1024) /* mbedTLS handshakes are stack hungry */
@@ -684,9 +684,9 @@ int player_init(size_t ring_capacity)
     int err;
 
     memset(&P, 0, sizeof(P));
-    sceKernelCreateLwMutex(&P.lock, "dxg_player", 0, 0, NULL);
-    sceKernelCreateLwCond(&P.data_cond, "dxg_data", 0, &P.lock, NULL);
-    sceKernelCreateLwCond(&P.space_cond, "dxg_space", 0, &P.lock, NULL);
+    sceKernelCreateLwMutex(&P.lock, "enso_player", 0, 0, NULL);
+    sceKernelCreateLwCond(&P.data_cond, "enso_data", 0, &P.lock, NULL);
+    sceKernelCreateLwCond(&P.space_cond, "enso_space", 0, &P.lock, NULL);
     if (sb_init(&P.sb, ring_capacity, ring_capacity / 8) != 0) {
         LOG("player: could not allocate %u byte buffer", (unsigned)ring_capacity);
         return -1;
@@ -720,10 +720,10 @@ static void start_session(const char *url, size_t prebuffer)
     LOG("player: start %s (prebuffer %u KB)", url, (unsigned)(prebuffer / 1024));
     /* Each on its own core, away from the main loop on core 0: TLS
      * handshakes are CPU-heavy and stalled frames when they shared it. */
-    P.net_thid = sceKernelCreateThread("dxg_net", net_thread, THREAD_PRIO_DEFAULT, NET_STACK, 0,
+    P.net_thid = sceKernelCreateThread("enso_net", net_thread, THREAD_PRIO_DEFAULT, NET_STACK, 0,
                                        SCE_KERNEL_CPU_MASK_USER_1, NULL);
     /* Higher priority (lower number) than the UI so audio never starves. */
-    P.dec_thid = sceKernelCreateThread("dxg_decode", dec_thread, THREAD_PRIO_DEFAULT - 20,
+    P.dec_thid = sceKernelCreateThread("enso_decode", dec_thread, THREAD_PRIO_DEFAULT - 20,
                                        DEC_STACK, 0, SCE_KERNEL_CPU_MASK_USER_2, NULL);
     if (P.net_thid < 0 || P.dec_thid < 0) {
         LOG("player: thread create failed 0x%08X 0x%08X", P.net_thid, P.dec_thid);

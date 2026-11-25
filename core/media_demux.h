@@ -9,8 +9,8 @@
  *
  * Portable, no allocation: whole segments in, bytes out through a callback.
  */
-#ifndef DXG_MEDIA_DEMUX_H
-#define DXG_MEDIA_DEMUX_H
+#ifndef ENSO_MEDIA_DEMUX_H
+#define ENSO_MEDIA_DEMUX_H
 
 #include <stddef.h>
 

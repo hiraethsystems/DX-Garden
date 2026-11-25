@@ -8,8 +8,8 @@
  * names with a word starting with the first query word, then the rest;
  * alphabetical within each rank.
  */
-#ifndef DXG_SEARCH_H
-#define DXG_SEARCH_H
+#ifndef ENSO_SEARCH_H
+#define ENSO_SEARCH_H
 
 #include "library.h"
 

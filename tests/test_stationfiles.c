@@ -1,6 +1,6 @@
 /* Checks generated station files against the real parser and grouping:
  * the committed Radio Browser sample, and any files named on the command
- * line (dxgarden_test FILE...), with timings for large ones. */
+ * line (ensoradio_test FILE...), with timings for large ones. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -107,9 +107,9 @@ static int check_file(const char *path, int verbose)
 
 void run_stationfile_tests(void)
 {
-    check_file(DXG_TESTDATA_DIR "/rb-sample-stations.txt", 0);
-    check_file(DXG_TESTDATA_DIR "/stations-scripts-test.txt", 0);
-    check_file(DXG_TESTDATA_DIR "/stations-m4-test.txt", 0);
+    check_file(ENSO_TESTDATA_DIR "/rb-sample-stations.txt", 0);
+    check_file(ENSO_TESTDATA_DIR "/stations-scripts-test.txt", 0);
+    check_file(ENSO_TESTDATA_DIR "/stations-m4-test.txt", 0);
 }
 
 int check_station_files(int argc, char **argv)

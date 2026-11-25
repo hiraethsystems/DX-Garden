@@ -1,4 +1,4 @@
-# DX Garden: design notes and known issues
+# Ensō Radio: design notes and known issues
 
 A running log of decisions, in plain terms. Newest milestone at the bottom.
 
@@ -7,10 +7,10 @@ A running log of decisions, in plain terms. Newest milestone at the bottom.
 ```sh
 # Vita VPK (needs VITASDK set):
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=$VITASDK/share/vita.toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-cmake --build build            # -> build/dxgarden-<version>.vpk
+cmake --build build            # -> build/ensoradio-<version>.vpk
 
 # Linux unit tests for core/:
-cmake -S . -B build-test && cmake --build build-test && ./build-test/dxgarden_test
+cmake -S . -B build-test && cmake --build build-test && ./build-test/ensoradio_test
 ```
 
 The version lives in `VERSION` (format `##.##`, the Vita's `APP_VER`). It is
@@ -19,12 +19,12 @@ it so builds can be told apart.
 
 ## Dev loop
 
-- Builds are installed by hand: copy `build/dxgarden-XX.YY.vpk` to the Vita
+- Builds are installed by hand: copy `build/ensoradio-XX.YY.vpk` to the Vita
   over FTP and install it with VitaShell. Reinstalling over an existing
-  install keeps `ux0:data/dxgarden/`.
+  install keeps `ux0:data/ensoradio/`.
 - **Do not suggest vitacompanion.** It stopped the Vita from booting and has
   been removed. There is no push-and-relaunch step.
-- Logging goes to `ux0:data/dxgarden/log-<version>.txt`, one file per
+- Logging goes to `ux0:data/ensoradio/log-<version>.txt`, one file per
   build (from 00.04; earlier builds wrote `log.txt`). A file is overwritten
   only when the same build is launched again. Each line is flushed so the
   log survives a crash. Copies brought back to the PC go in `logs/`
@@ -562,7 +562,7 @@ details move to the START menu only.
 
 ## Build 00.11: About
 
-- Settings has a new last row, **About DX Garden**. It shows:
+- Settings has a new last row, **About Ensō Radio**. It shows:
   - App name, version and build revision.
   - A one-line description (own streams, no station directory).
   - Author: Aisling de Grás, aisling@hiraeth.club, Threads @hiraeth.clwb.
@@ -610,7 +610,7 @@ details move to the START menu only.
   - **Server discovery:** DNS lookup of all.api.radio-browser.info, a
     reverse lookup per address, a random order, and the next server on
     failure, as the API docs describe.
-  - **User-Agent:** `dxgarden-tools/<VERSION>`.
+  - **User-Agent:** `ensoradio-tools/<VERSION>`.
   - **Search:** `/json/stations/search` with has_geo_info=true,
     hidebroken=true, ordered by click count, in pages of 500 with a 1 s
     pause.
@@ -643,8 +643,8 @@ details move to the START menu only.
 - **Tests:**
   - `tools/test_rb_to_stations.py`: offline unit tests.
   - `testdata/rb-sample-stations.txt`: 36 real MP3 stations, parsed and
-    grouped in `dxgarden_test` with zero malformed lines.
-  - `dxgarden_test FILE...` checks any generated file and prints
+    grouped in `ensoradio_test` with zero malformed lines.
+  - `ensoradio_test FILE...` checks any generated file and prints
     timings.
 - **Codec labels seen in a run of about 9,000:** MP3 5,689, AAC+ 1,182,
   AAC 1,032, OGG 97, no OPUS. Radio Browser seems to list Ogg Opus
@@ -736,7 +736,7 @@ details move to the START menu only.
 - **Testing:**
   - `testdata/stations-scripts-test.txt` has 14 stations named in every
     new script, including right-to-left text mixed with digits and Latin.
-    `dxgarden_test` checks it parses.
+    `ensoradio_test` checks it parses.
   - The shaping itself can only be checked on hardware: this PC has no
     HarfBuzz or FriBidi.
 - **Big-list test file:** `build/stations-00.12-test.txt` has 7,488 MP3
@@ -1047,7 +1047,7 @@ the AAC message, 404, HLS, and DNS retries with back-off. Fixes:
     names are CC BY 4.0 (credited in the file header, README and About).
     Natural Earth is public domain.
   - `assets/stations/stations.txt` goes into the VPK as `app0:stations.txt`.
-    On first run, if `ux0:data/dxgarden/stations.txt` doesn't exist, it is
+    On first run, if `ux0:data/ensoradio/stations.txt` doesn't exist, it is
     written as the format notes and examples followed by the bundled list.
     An existing file is never touched, so testers keep theirs; delete it to
     get the bundled one.
@@ -1197,7 +1197,7 @@ the AAC message, 404, HLS, and DNS retries with back-off. Fixes:
 
 ## Build 00.27: Swansea, and the gate's name moved up
 
-- **00.26 on hardware:** much better, but the "DX Garden" name on the gate
+- **00.26 on hardware:** much better, but the "Ensō Radio" name on the gate
   sat close to the Start button the Vita draws over the bottom of it. The
   name and its underline are now 28 px higher (underline at y 94-96 of
   158).
@@ -1228,11 +1228,11 @@ the AAC message, 404, HLS, and DNS retries with back-off. Fixes:
   - CMake checks both, derives the Vita's XX.YY (`param.sfo` APP_VER only
     takes that form: 0.9.0 -> 00.90, 1.0.1 -> 01.01, 1.2.3 -> 01.23, so
     minor and patch stay 0-9), and names the VPK
-    `dxgarden-<version>-b<build>.vpk`, or `dxgarden-<version>.vpk` with
-    `-DDXG_RELEASE=ON`.
+    `ensoradio-<version>-b<build>.vpk`, or `ensoradio-<version>.vpk` with
+    `-DENSO_RELEASE=ON`.
   - The app shows "0.9.0 (build 29)" in Player details and About (with the
     git commit), logs it at start, and names the log
-    `log-0.9.0-b29.txt`. The network user agent says `DXGarden/0.9.0`.
+    `log-0.9.0-b29.txt`. The network user agent says `EnsoRadio/0.9.0`.
   - Catch: test builds of one version share the Vita's XX.YY, so the
     system's app information can't tell them apart; About can.
   - Releases are tagged `v0.9.0` in git.
@@ -1243,14 +1243,14 @@ the AAC message, 404, HLS, and DNS retries with back-off. Fixes:
 ## Release 0.9.0 (beta), 2026-10-22
 
 - Build 30 from commit 173fb6e (same code as tested build 29; README
-  changes only), built with `-DDXG_RELEASE=ON` in `build-release/`.
+  changes only), built with `-DENSO_RELEASE=ON` in `build-release/`.
   SHA-256 of `dxgarden-0.9.0.vpk`:
   1844dbe86c0b5d695b61cb8ee53799af4a7b7b2a0105131941f86d1c4a955c21.
 - Merged to `main` through pull request #1 with a merge commit (so 173fb6e,
   shown in About, stays in history), tagged `v0.9.0`, and published as a
   regular GitHub release marked Latest (a pre-release doesn't show on the
   repository's main page), titled "(beta)", with the VPK attached:
-  https://github.com/hiraethsystems/DX-Garden/releases/tag/v0.9.0
+  https://github.com/hiraethsystems/Enso-Radio-Vita/releases/tag/v0.9.0
 - Next build numbers continue from 31. `VERSION` stays 0.9.0 until the next
   release is decided (0.9.1 for fixes, 1.0.0 when the beta is done).
 
@@ -1263,7 +1263,7 @@ here before a Windows build goes out.
 
 **Toolchain.** Windows builds are cross-compiled on Linux with MinGW-w64
 (the `-posix` compilers), via `cmake/mingw-w64.cmake`. The MinGW runtime is
-linked statically, so `dxgarden.exe` imports only DLLs that come with
+linked statically, so `ensoradio.exe` imports only DLLs that come with
 Windows. Wine runs the Windows builds here for checks.
 
 **Libraries** (`tools/build_win_deps.sh`, official source releases, SHA-256
@@ -1287,7 +1287,7 @@ the device, so the stream buffer (not the device queue) holds the slack, as
 on the Vita. The network side, playlist following, ICY titles, error
 messages and reconnects are unchanged.
 
-**Data folder:** `%APPDATA%\DX Garden\` (Linux: `~/.local/share/DX Garden/`).
+**Data folder:** `%APPDATA%\` and (Linux) `~/.local/share/`, in a folder named after the display name.
 W1 writes only the log there, `log-<version>-b<build>.txt` and
 `...-previous.txt`, as on the Vita.
 
@@ -1300,7 +1300,7 @@ W1 writes only the log there, `log-<version>-b<build>.txt` and
 - An AAC stream gets the Vita's message, "This station streams AAC; DX
   Garden only plays MP3" (AAC arrives in W5).
 
-**Headless check:** `dxgarden --play URL --seconds N` plays without a
+**Headless check:** `ensoradio --play URL --seconds N` plays without a
 window, prints the status each second and exits 0 if it played.
 
 **Known issues**
@@ -1358,7 +1358,7 @@ Tab moves the focus between controls.
 
 **Look.** The standard 9x colour scheme (grey 3D faces, navy selection,
 navy-to-blue title gradient, grey workspace). The art is our own: every
-icon is pixel art made for DX Garden in `desktop/icons.c`, from character
+icon is pixel art made for Ensō Radio in `desktop/icons.c`, from character
 grids or drawn in code. No Microsoft artwork, fonts or sounds.
 
 **Font.** Liberation Sans 11 px (8 point at 96 dpi), drawn without
@@ -1404,7 +1404,7 @@ percent; build 32's 1-3 values are read as 100-300.
 
 ## Windows port, W3: the station library (build 34, 2026-10-30)
 
-Same data as the Vita app, in `%APPDATA%\DX Garden\`: `stations.txt`
+Same data as the Vita app, in a folder under `%APPDATA%` named after the display name: `stations.txt`
 (created from the bundled list on first run, never overwritten),
 `import\` for M3U/PLS files, `favourites.txt`, `recent.txt`, `config.ini`.
 Loading goes through core's `station_source` interface and
@@ -1434,7 +1434,7 @@ for playing any stream.
 
 **UTF-8 file names.** Core uses `fopen()`, which on Windows takes the
 ANSI code page, so a data folder under a user name with an accent (Grás)
-would fail to open. `desktop/dxgarden.manifest` sets the process code page
+would fail to open. `desktop/ensoradio.manifest` sets the process code page
 to UTF-8 (Windows 10 1903 and later), which fixes every file call at once;
 checked under Wine with a folder named `Grás`. The manifest also declares
 per-monitor DPI awareness.
@@ -1556,9 +1556,9 @@ for Linux to replace the Windows build eventually; until then both build
 from the same code, and Windows behaves as before.
 
 **Title bar.** On Linux the desktop draws the title bar and border
-(`DXG_NATIVE_FRAME` in `desktop/app.h`): the window isn't borderless, there
+(`ENSO_NATIVE_FRAME` in `desktop/app.h`): the window isn't borderless, there
 is no hit testing, and the menu bar starts at the top of the window. The
-window title is still "Station - DX Garden". The 9x frame stays on Windows.
+window title is still "Station - Ensō Radio". The 9x frame stays on Windows.
 KDE Plasma draws the title bar itself (server-side decorations, checked in
 a Wayland trace: KWin answers mode 2). GNOME on Wayland leaves title bars
 to the app, so SDL3 is built with libdecor, which draws one there.
@@ -1567,7 +1567,7 @@ to the app, so SDL3 is built with libdecor, which draws one there.
 100%, NVIDIA). SDL 3.4 runs the app through XWayland here by default
 (SDL picks X11 on compositors without the newer frame-pacing protocols);
 `SDL_VIDEO_DRIVER=wayland` runs it natively, and both work:
-- The app ID / X11 window class is `club.hiraeth.dxgarden`, the same as the
+- The app ID / X11 window class is `systems.hiraeth.ensoradio`, the same as the
   menu entry's file name and `StartupWMClass`, so Plasma's task manager
   groups the window under the menu entry and its icon.
 - Under X11 window sizes are in pixels, so on the 160% screen the window
@@ -1576,31 +1576,30 @@ to the app, so SDL3 is built with libdecor, which draws one there.
   by the screen's scale (within 90% of the usable area). The interface
   scale itself was already right in both (150%, the nearest step to 160%).
 - X11 title bars and Alt+Tab want the icon on the window, so the app sets
-  it (`share/club.hiraeth.dxgarden/icon.png`, loaded with SDL 3.4's PNG loader).
+  it (`share/systems.hiraeth.ensoradio/icon.png`, loaded with SDL 3.4's PNG loader).
 - The first layout gives Stations at least its minimum height; in a short
   window Now Playing shrinks first.
 
-**Folders.** Data moved from `~/.local/share/DX Garden/` to
-`$XDG_DATA_HOME/dxgarden/` (normally `~/.local/share/dxgarden/`), matching
-the internal name. On start, an old `DX Garden` folder is renamed to the
-new name if the new one doesn't exist yet, so settings, favourites and
+**Folders.** Data moved from a folder named after the display name to
+`$XDG_DATA_HOME/` under the internal name. On start, the older folder is
+renamed to the new name if the new one doesn't exist yet, so settings, favourites and
 station files carry over. The app's own files (fonts, bundled
 `stations.txt`, `earth-day.pack`) are found next to the program when
-`fonts/` is there (the build folder), otherwise in `../share/club.hiraeth.dxgarden/`
+`fonts/` is there (the build folder), otherwise in `../share/systems.hiraeth.ensoradio/`
 from it: an installed copy, and later the AppImage. The first try used
-`share/dxgarden/`, but with `--prefix ~/.local` that is the data folder
+`share/ensoradio/`, but with `--prefix ~/.local` that is the data folder
 itself, so the install put the bundled list where the user's
 `stations.txt` goes and a reinstall would have overwritten it. Found on
 the first real install, before the app had run; the folder is now named
 after the app ID so the two can't meet.
 
 **Install.** `cmake --install build-linux --prefix ~/.local` puts in
-`bin/dxgarden`, `share/club.hiraeth.dxgarden/`, a menu entry and a 128 px icon, both
-named after the app ID SDL gives the desktop (`club.hiraeth.dxgarden`), so
+`bin/ensoradio`, `share/systems.hiraeth.ensoradio/`, a menu entry and a 128 px icon, both
+named after the app ID SDL gives the desktop (`systems.hiraeth.ensoradio`), so
 the window and its menu entry match. The installed menu entry runs the
 program by its full path (written at install time): Plasma on Debian
 doesn't have `~/.local/bin` on its PATH, and the first real install failed
-to launch with "Could not find the program 'dxgarden'". The icon is the Vita bubble
+to launch with "Could not find the program 'ensoradio'". The icon is the Vita bubble
 (`art/livearea/icon0.png`) cropped to a circle, in `desktop/linux/`.
 
 **Libraries.** SDL3 3.4.18 is still built from source
@@ -1611,7 +1610,7 @@ them.
 
 **Checked here** (Debian 13, KDE Plasma 6.3.6 on Wayland, NVIDIA RTX
 4060): the build and the 4538 core checks pass; an install into a test
-prefix starts with assets from `share/club.hiraeth.dxgarden/`; an old `DX Garden` folder
+prefix starts with assets from `share/systems.hiraeth.ensoradio/`; an older data folder
 with a favourite in it was moved and the favourite loaded; screenshots
 under X11 (the default) and native Wayland show the menu bar at the top, no
 9x title bar, and the same layout at 150%; the X11 window has its class and
@@ -1687,7 +1686,7 @@ GNOME itself, and changing the KDE scheme while the app runs.
 
 ## Linux port, L3: the AppImage (build 39, 2026-11-11)
 
-`tools/make_appimage.sh` builds `dist/dxgarden-<version>-b<build>-x86_64.AppImage`
+`tools/make_appimage.sh` builds `dist/ensoradio-<version>-b<build>-x86_64.AppImage`
 (`--release`: without the build number), about 81 MB, almost all of it the
 globe's imagery. One file: make it executable and run it.
 
@@ -1699,7 +1698,7 @@ builds, into `third_party/linux-static/`, the same versions the Windows
 build uses: curl 8.23.0 (HTTP and HTTPS only), mpg123 1.33.7, FreeType
 2.15.0, HarfBuzz 15.0.0 and FriBidi 1.0.18, plus mbedTLS 3.6.7 (the LTS
 branch; the Vita build also uses mbedTLS) for curl's TLS. With
-`-DDXG_STATIC_DEPS=ON` the program links these and the C++ runtime
+`-DENSO_STATIC_DEPS=ON` the program links these and the C++ runtime
 statically, and needs only `libc` and `libm`; SDL loads the desktop's
 graphics, sound and input libraries itself when it starts. The development
 build keeps using the distribution's packages.
@@ -1722,8 +1721,8 @@ an older system.
 20251108) are downloaded once into `third_party/appimage/`, at those fixed
 versions, and checked against the SHA-256 sums GitHub publishes for them.
 appimagetool runs extracted, so packing needs no FUSE. The image's menu
-entry runs `dxgarden` from inside the image; its files are in
-`usr/share/club.hiraeth.dxgarden/`, found the same way as an installed
+entry runs `ensoradio` from inside the image; its files are in
+`usr/share/systems.hiraeth.ensoradio/`, found the same way as an installed
 copy's.
 
 **Checked here** (Debian 13, KDE Plasma 6.3.6): the static program links
@@ -1761,7 +1760,7 @@ FUSE (the image needs `fusermount3` to mount itself; otherwise run it with
   commit (7c24817), tagged `v0.9.1` there, and the AppImage rebuilt from
   that commit with `--release`. Published as a regular release marked
   Latest, with the AppImage attached:
-  https://github.com/hiraethsystems/DX-Garden/releases/tag/v0.9.1
+  https://github.com/hiraethsystems/Enso-Radio-Vita/releases/tag/v0.9.1
   SHA-256 of `dxgarden-0.9.1-x86_64.AppImage`:
   64bb144621e81b379eef83dc13cba36de46acdaff28b43263eda7a65dd87637f
   (checked against the downloaded file).
@@ -1933,15 +1932,15 @@ too).
 
 **The split:**
 - `desktop/` is now `linux/`, `desktop/linux/` is `linux/share/`,
-  `cmake/desktop.cmake` is `cmake/linux.cmake` (option `DXG_LINUX`, target
-  `dxgarden_linux`), `tools/build_win_deps.sh` is `tools/build_linux_deps.sh`.
+  `cmake/desktop.cmake` is `cmake/linux.cmake` (option `ENSO_LINUX`, target
+  `ensoradio_linux`), `tools/build_win_deps.sh` is `tools/build_linux_deps.sh`.
 - `VERSION`/`BUILD` moved: Linux 0.9.1, build 44; Vita 0.9.0, build 43
   (unchanged; the next Vita build is 44).
 - README: status, installing, controls, versions and building are now per
   app. CLAUDE.md has a "Two apps, one repo" section.
 
-**Windows removed:** `cmake/mingw-w64.cmake`, `dxgarden.rc`,
-`dxgarden.manifest`, the win64 target of the deps script, every `_WIN32`
+**Windows removed:** `cmake/mingw-w64.cmake`, `ensoradio.rc`,
+`ensoradio.manifest`, the win64 target of the deps script, every `_WIN32`
 branch, the hand-drawn 9x title bar and its hit testing (Linux always used
 the desktop's own frame), and the Windows-only Look menu removal. The
 About box said "for Windows" on Linux too; it now says "for Linux". The
@@ -1972,7 +1971,7 @@ the mail program (mailto:).
   3 Isle of Man, 2 Jersey, 1 Guernsey, 44 Ukraine, 2 Occupied West Bank,
   1 Gaza. **Known miss:** "UK Pressure Radio" is labelled United Kingdom:
   its pin is in the sea off Cherbourg, so no nation can be told from it.
-- An existing `~/.local/share/dxgarden/stations.txt` is never replaced:
+- An existing `~/.local/share/ensoradio/stations.txt` is never replaced:
   rename or delete it to get the new list.
 
 **Checked here:** unit tests (4,650) and script tests (24) pass; a fresh
@@ -2011,7 +2010,7 @@ the Vita build):
 - The C output is byte-for-byte the script's: `tests/compare_listtool.sh`
   runs both on the same raw snapshot in 5 configurations (all formats,
   the Vita's MP3 list, no borders, no towns, 300 stations), and they
-  match. `dxgarden_listtool` is the C side of that comparison. The full
+  match. `ensoradio_listtool` is the C side of that comparison. The full
   list takes 1.1 s in C.
 - One deliberate difference: `rb_query()` leaves out the codec filter
   when HLS is included, since HLS stations can be any codec (the script
@@ -2027,7 +2026,7 @@ the Vita build):
   way), in random order; pages of 500, one a second; each server tried 4
   times (waiting 2, 4, 8 s) before the next. GeoNames' `cities1000.zip`
   and Natural Earth 5.1.2's `ne_50m_admin_0_countries.geojson` are kept in
-  `~/.local/share/dxgarden/cache/`. The result goes to
+  `~/.local/share/ensoradio/cache/`. The result goes to
   `stations-new.txt`; a summary shows; **Replace My Station List** renames
   `stations.txt` to `stations-backup-<date>.txt` (`-2`, `-3`... if taken),
   moves the new one in and reloads. Cancel works at any point; closing
@@ -2035,7 +2034,7 @@ the Vita build):
 - `player_tls_setup()` (player.c) gives the download the same
   certificate search the player uses, which the AppImage's static curl
   needs.
-- `dxgarden --download-list [--codecs ...] [--hls] [--countries ...]
+- `ensoradio --download-list [--codecs ...] [--hls] [--countries ...]
   [--max N] [--refresh]` does the same without a window.
 
 **Bug found and fixed (script and C):** when a station's position wins
@@ -2164,7 +2163,7 @@ here).
   (F6). No Vita release: the Vita stays 0.9.0.
 - Build 47: build 46 plus the version bump and README changes. The bundled
   list is the same snapshot as build 46 (51,378 stations), its header now
-  "shipped with DX Garden for Linux 0.9.2".
+  "shipped with Ensō Radio for Linux 0.9.2".
 - `linux-port` goes to `main` through a pull request (merge commit), then
   `linux-v0.9.2` is tagged there and the AppImage is built from that commit
   with `tools/make_appimage.sh --release`.
@@ -2172,8 +2171,8 @@ here).
 ## The Linux app moves to its own repository, 2026-11-24
 
 - **Owner's decision (2026-11-24):** one repository for two apps was
-  confusing. DX Garden for Linux now lives in
-  `hiraethsystems/DX-Garden-Linux`, made from this repository's `main` at
+  confusing. Ensō Radio for Linux now lives in
+  `hiraethsystems/Enso-Radio-Linux`, made from this repository's `main` at
   the 0.9.2 merge (`4b5ea62`) with its history (Vita files left out). Its
   first release there is Linux 0.9.2 (`linux-v0.9.2`, build 47); the Linux
   0.9.1 release (`v0.9.1`) stays here.
@@ -2181,7 +2180,7 @@ here).
   `cmake/linux.cmake`, the Linux station list (`assets/stations/linux/`),
   the Liberation Sans fonts, the station-list builder that only the Linux
   app used (`core/json`, `rb_build`, `unitab`, `ustr`, `zip_read`, their
-  tests and `dxgarden_listtool`), and the Linux build tools
+  tests and `ensoradio_listtool`), and the Linux build tools
   (`make_appimage.sh`, `build_linux_deps.sh`, `make_earth.py`,
   `make_unicode_tables.py`). `tools/rb_to_stations.py` stays: it builds the
   Vita's list too.
@@ -2194,28 +2193,28 @@ here).
   that. Installed with the owner's OK: `vdpm install curl-mbedtls mbedtls
   zstd mpg123 freetype harfbuzz fribidi libpng libjpeg-turbo zlib bzip2
   vitaGL vitaShaRK libmathneon libvita2d taihen` (SceShaccCgExt came with
-  them). `main` then builds `dxgarden-0.9.0-b43.vpk` with no warnings from
+  them). `main` then builds `ensoradio-0.9.0-b43.vpk` with no warnings from
   the app's code (one linker note about the SDK's own `crtn.o`). Not run on
   a Vita: nothing in `vita/` changed, only files it never used were
   removed.
 
-## Renamed to Ensō Radio, 2026-11-25
+## The name Ensō Radio, 2026-11-25
 
-- **Owner's decision (2026-11-25):** DX Garden is now **Ensō Radio** on
-  every platform. Radio Garden holds registered trade marks for "Radio
-  Garden" (EU, classes 9, 38 and 41; Benelux, class 9), and "Garden" in a
-  globe radio app's name was too close.
-- **Visible name only on the Vita**, so installs update in place: the
-  bubble and LiveArea title (`VITA_APP_NAME`), the LiveArea gate
-  (`tools/livearea_globe.py`, re-rendered; only `startup.png` changed),
-  the About and status text, the log's first line, the network user agent
-  (`EnsoRadio/<version> (PS Vita)`), the station tool's user agent
-  (`ensoradio-tools/<version>`), VPK names (`ensoradio-<version>[-bN].vpk`),
-  README and CLAUDE.md. Kept as they were: title ID `DXGA00001`, data
-  folder `ux0:data/dxgarden/`, the `DXG_` macros, the `dxgarden` CMake
-  targets and the `DXGL` map file magic.
-- Build 44. NotoSans (the in-app font) has `ō` (U+014D). **Not yet checked
-  on hardware:** whether the Vita's own system font shows `ō` in the
-  bubble name under the icon. If it shows a box, set `VITA_APP_NAME` to
-  "Enso Radio".
-
+- **Owner's decision (2026-11-25):** the app is **Ensō Radio** on every
+  platform, chosen to stay clearly apart from Radio Garden, which holds
+  registered trade marks for "Radio Garden" (EU, classes 9, 38 and 41;
+  Benelux, class 9). Repository: `hiraethsystems/Enso-Radio-Vita`.
+- **Names on the Vita:** bubble and LiveArea title (`VITA_APP_NAME`), the
+  LiveArea gate (`tools/livearea_globe.py`), About and status text, the
+  log's first line, user agents `EnsoRadio/<version> (PS Vita)` and
+  `ensoradio-tools/<version>`, VPKs `ensoradio-<version>[-bN].vpk`, CMake
+  targets `ensoradio`, `ensoradio_test`, macros `ENSO_…`, map file tag
+  `ENSL`, data folder `ux0:data/ensoradio/`.
+- **Kept so installs update in place:** the title ID `DXGA00001` (a new
+  one would install as a second app), and the data folder of 0.9.1 and
+  earlier, `ux0:data/dxgarden/`: on first start, if `ux0:data/ensoradio/`
+  doesn't exist, `move_old_data_dir()` renames the old folder to it and the
+  log says so. Released files keep their names and checksums.
+- Builds 44 and 45. **Not yet checked on hardware:** the folder move (build
+  45), and whether the Vita's system font shows `ō` in the bubble name. If
+  it shows a box, set `VITA_APP_NAME` to "Enso Radio".

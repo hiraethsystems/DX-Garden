@@ -1,4 +1,4 @@
-# DX Garden globe test file. Every line reuses the three M1 test streams
+# Ensō Radio globe test file. Every line reuses the three M1 test streams
 # (Radio Paradise HTTP/HTTPS and KEXP); the ?test= tag only makes each URL
 # unique so it gets its own entry. The cities are spread out to test the
 # globe: close neighbours, the date line, far north and far south.

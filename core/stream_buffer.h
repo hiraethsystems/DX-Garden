@@ -9,8 +9,8 @@
  *
  * Not thread-safe: the Vita side wraps it in a lock.
  */
-#ifndef DXG_STREAM_BUFFER_H
-#define DXG_STREAM_BUFFER_H
+#ifndef ENSO_STREAM_BUFFER_H
+#define ENSO_STREAM_BUFFER_H
 
 #include <stddef.h>
 #include <stdint.h>
