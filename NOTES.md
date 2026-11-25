@@ -2218,3 +2218,16 @@ here).
 - Builds 44 and 45. **Not yet checked on hardware:** the folder move (build
   45), and whether the Vita's system font shows `ō` in the bubble name. If
   it shows a box, set `VITA_APP_NAME` to "Enso Radio".
+
+## New icon, build 46 (2026-11-25)
+
+- **Owner's decision (2026-11-25):** a new icon on every platform: a
+  brush-drawn ensō around a radio mast, white on black. The artwork is the
+  owner's (made with Gemini), kept as `art/icon-source.jpg`.
+- `sce_sys/icon0.png` (128 px, 8-bit palette like the LiveArea images) is
+  made by `tools/icon_extract.py` and `tools/make_icons.py` (shared with
+  the Android and Linux repos): black to the edge, since the system crops
+  the bubble to a circle, with the brush art at 80 %.
+- The LiveArea background and gate (`bg.png`, `startup.png`) are unchanged.
+- Checked here: the VPK builds with the new `icon0.png`. Not yet checked on
+  hardware: the bubble.
