@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-# DX Garden for PS Vita (the Linux app is in hiraethsystems/DX-Garden-Linux):
+# Ensō Radio for PS Vita (the Linux app is in hiraethsystems/Enso-Radio-Linux):
 #   Vita:  cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=$VITASDK/share/vita.toolchain.cmake
 #   Tests: cmake -S . -B build-test        (core/ unit tests, on Linux)
 project(dxgarden C)
@@ -34,9 +34,9 @@ endif()
 # names the VPK for a release.
 option(DXG_RELEASE "Name the VPK for a release, without the build number" OFF)
 if(DXG_RELEASE)
-    set(DXG_VPK_NAME "dxgarden-${DXG_VERSION}.vpk")
+    set(DXG_VPK_NAME "ensoradio-${DXG_VERSION}.vpk")
 else()
-    set(DXG_VPK_NAME "dxgarden-${DXG_VERSION}-b${DXG_BUILD}.vpk")
+    set(DXG_VPK_NAME "ensoradio-${DXG_VERSION}-b${DXG_BUILD}.vpk")
 endif()
 
 set(CMAKE_C_STANDARD 99)
@@ -68,7 +68,7 @@ set(CORE_SOURCES
 if(VITA)
     include("${VITASDK}/share/vita.cmake" REQUIRED)
 
-    set(VITA_APP_NAME "DX Garden")
+    set(VITA_APP_NAME "Ensō Radio")
     set(VITA_TITLEID  "DXGA00001")
 
     add_executable(dxgarden

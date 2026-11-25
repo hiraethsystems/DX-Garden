@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The globe artwork for DX Garden's LiveArea, drawn by
+"""The globe artwork for Ensō Radio's LiveArea, drawn by
 `python3 tools/make_livearea.py render` (which saves and installs it).
 
 The globe is rendered from the app's own map, assets/map/world.png (land
@@ -307,7 +307,7 @@ def font(path, size):
 # ---------------------------------------------------------------- images
 
 # The place under the crosshair and rings in all three images: Swansea,
-# where DX Garden was made.
+# where Ensō Radio was made.
 FOCUS = (51.62, -3.94)
 
 
@@ -369,8 +369,8 @@ def make_startup(land, lines):
 
     d = ImageDraw.Draw(img)
     # Kept high: the Vita draws its Start button over the bottom of the gate.
-    d.text((136, 22), "DX", font=font(FONT_BOLD, 30), fill=TEXT)
-    d.text((136, 52), "Garden", font=font(FONT_BOLD, 30), fill=TEXT)
+    d.text((136, 22), "Ensō", font=font(FONT_BOLD, 30), fill=TEXT)
+    d.text((136, 52), "Radio", font=font(FONT_BOLD, 30), fill=TEXT)
     d.rectangle([138, 94, 138 + 26, 96], fill=ACCENT)
     # A thin frame, as the gate sits on the LiveArea background.
     d.rectangle([0, 0, W - 1, H - 1], outline=(52, 62, 78))

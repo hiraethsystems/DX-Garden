@@ -2198,3 +2198,24 @@ here).
   the app's code (one linker note about the SDK's own `crtn.o`). Not run on
   a Vita: nothing in `vita/` changed, only files it never used were
   removed.
+
+## Renamed to Ensō Radio, 2026-11-25
+
+- **Owner's decision (2026-11-25):** DX Garden is now **Ensō Radio** on
+  every platform. Radio Garden holds registered trade marks for "Radio
+  Garden" (EU, classes 9, 38 and 41; Benelux, class 9), and "Garden" in a
+  globe radio app's name was too close.
+- **Visible name only on the Vita**, so installs update in place: the
+  bubble and LiveArea title (`VITA_APP_NAME`), the LiveArea gate
+  (`tools/livearea_globe.py`, re-rendered; only `startup.png` changed),
+  the About and status text, the log's first line, the network user agent
+  (`EnsoRadio/<version> (PS Vita)`), the station tool's user agent
+  (`ensoradio-tools/<version>`), VPK names (`ensoradio-<version>[-bN].vpk`),
+  README and CLAUDE.md. Kept as they were: title ID `DXGA00001`, data
+  folder `ux0:data/dxgarden/`, the `DXG_` macros, the `dxgarden` CMake
+  targets and the `DXGL` map file magic.
+- Build 44. NotoSans (the in-app font) has `ō` (U+014D). **Not yet checked
+  on hardware:** whether the Vita's own system font shows `ō` in the
+  bubble name under the icon. If it shows a box, set `VITA_APP_NAME` to
+  "Enso Radio".
+

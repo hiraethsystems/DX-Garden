@@ -1,13 +1,15 @@
-# DX Garden
+# Ensō Radio
 
+*Formerly DX Garden.* 
 A radio player and explorer for the PS Vita (homebrew, HENkaku/ensō), in
 the spirit of spinning a globe and listening to what's on air somewhere
 else: MP3 stations on a globe you spin with the sticks. Latest release:
 0.9.0.
 
-**Looking for the Linux app?** DX Garden for Linux (an AppImage, with AAC,
+**Looking for the Android or Linux app?** Ensō Radio for Android is at
+[hiraethsystems/Enso-Radio](https://github.com/hiraethsystems/Enso-Radio). Ensō Radio for Linux (an AppImage, with AAC,
 Ogg, Opus, FLAC and HLS) has its own repository:
-[hiraethsystems/DX-Garden-Linux](https://github.com/hiraethsystems/DX-Garden-Linux).
+[hiraethsystems/Enso-Radio-Linux](https://github.com/hiraethsystems/Enso-Radio-Linux).
 Its 0.9.1 release is still here, under this repository's releases; later
 ones are there.
 
@@ -63,16 +65,19 @@ on a PCH-1000; this release is to collect reports from other Vitas before
 You need a PS Vita running HENkaku or ensō with
 [VitaShell](https://github.com/TheOfficialFloW/VitaShell), and Wi-Fi.
 
-1. **The shader compiler, once.** DX Garden draws with vitaGL, which needs
+1. **The shader compiler, once.** Ensō Radio draws with vitaGL, which needs
    the Vita's shader compiler at `ur0:data/libshacccg.suprx`. If you don't
    have it yet, install and run the ShaRKBR33D homebrew, which extracts it.
-   Without it, DX Garden shows a message and quits.
-2. **Install the VPK.** Copy `dxgarden-0.9.0.vpk` to the Vita and install it
+   Without it, Ensō Radio shows a message and quits.
+2. **Install the VPK.** Copy the latest VPK (`ensoradio-<version>.vpk`;
+   0.9.0 is `dxgarden-0.9.0.vpk`) to the Vita and install it
    with VitaShell.
 3. **Start it.** The first start creates `ux0:data/dxgarden/` with the
    bundled station list and opens on the globe.
 
-To update, install the new VPK over the old one. Your `stations.txt`,
+To update, install the new VPK over the old one. The data folder keeps its old
+name, `ux0:data/dxgarden/`, so a DX Garden install updates in place to
+Ensō Radio with your stations, favourites and settings intact. Your `stations.txt`,
 favourites, recently played and settings are kept. If the bubble still
 shows old artwork, use VitaShell's "Refresh LiveArea" or reinstall.
 
@@ -100,7 +105,8 @@ Stop the crosshair on a place and it starts playing after a moment.
 
 The release number is MAJOR.MINOR.PATCH (`vita/VERSION`), and the build
 number for test builds (`vita/BUILD`) only goes up. The app, the log and
-test VPKs show both, e.g. "0.9.0 (build 29)" and `dxgarden-0.9.0-b29.vpk`.
+test VPKs show both, e.g. "0.9.0 (build 29)" and `ensoradio-0.9.0-b44.vpk`
+(builds up to 43 were named `dxgarden-…`).
 Releases are named without the build number (build with
 `-DDXG_RELEASE=ON`). `v0.9.0` is the Vita's release tag; `v0.9.1` was the
 Linux app's, from before it moved to its own repository. Later Vita
@@ -121,8 +127,8 @@ cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=$VITASDK/share/vita.toolchain.cmake -
 cmake --build build
 ```
 
-This produces `build/dxgarden-<version>-b<build>.vpk`, or
-`build/dxgarden-<version>.vpk` when configured with `-DDXG_RELEASE=ON`.
+This produces `build/ensoradio-<version>-b<build>.vpk`, or
+`build/ensoradio-<version>.vpk` when configured with `-DDXG_RELEASE=ON`.
 
 The portable core has Linux unit tests:
 
@@ -205,7 +211,7 @@ All in `ux0:data/dxgarden/`. They are created on first run if missing.
 
 ## Credits and licences
 
-- DX Garden is licensed under the GNU GPL v3 (see `LICENSE`).
+- Ensō Radio is licensed under the GNU GPL v3 (see `LICENSE`).
 - CA certificates: Mozilla's root store, via curl.se (MPL 2.0).
 - Fonts by the Noto Project Authors, SIL Open Font License 1.1
   (`assets/fonts/OFL.txt`, also shipped in the VPK): Noto Sans, Noto Sans

@@ -6,10 +6,10 @@
 #include "text.h"
 
 const char FAVOURITES_HEADER[] =
-    "# DX Garden favourites: one stream URL per line.\n"
+    "# Ensō Radio favourites: one stream URL per line.\n"
     "# Managed by the app (Triangle in a station list), but safe to edit.\n";
 const char RECENT_HEADER[] =
-    "# DX Garden recently played, newest first. Managed by the app.\n";
+    "# Ensō Radio recently played, newest first. Managed by the app.\n";
 
 void userlist_init(userlist *l)
 {

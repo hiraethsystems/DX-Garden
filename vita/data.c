@@ -147,7 +147,7 @@ int data_add_url(app_data *d, const char *name, const char *url)
             clean[i] = ' ';
     snprintf(entry, sizeof(entry), "#EXTINF:-1,%s\n%s\n", clean, url);
     if (fs_append(PATH_ADDED_M3U, entry,
-                  "#EXTM3U\n# Stations added in DX Garden with \"Add station by URL\".\n") != 0)
+                  "#EXTM3U\n# Stations added in Ensō Radio with \"Add station by URL\".\n") != 0)
         return -1;
     LOG("added by URL: %s (%s)", url, clean);
     data_reload_library(d);

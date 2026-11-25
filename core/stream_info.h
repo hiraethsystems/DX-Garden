@@ -16,7 +16,7 @@ typedef enum {
     SK_UNKNOWN,  /* no clear signs either way: try it as MP3 */
     SK_PLAYLIST, /* M3U/PLS/ASX: fetch the stream it points to */
     SK_HLS,      /* HTTP Live Streaming: not supported */
-    SK_OTHER,    /* audio in a format DX Garden doesn't decode */
+    SK_OTHER,    /* audio in a format Ensō Radio doesn't decode */
     SK_HTML      /* a web page */
 } stream_kind;
 

@@ -11,7 +11,7 @@
 #define MIN_FIELDS 6
 
 const char STATIONS_EXAMPLE[] =
-    "# DX Garden station list\n"
+    "# Ensō Radio station list\n"
     "#\n"
     "# One station per line, fields separated by | (a vertical bar):\n"
     "#\n"
@@ -30,7 +30,7 @@ const char STATIONS_EXAMPLE[] =
     "# stream itself, not at a web page.\n"
     "#\n"
     "# M3U and PLS playlists go in ux0:data/dxgarden/import/ instead. They have\n"
-    "# no coordinates, so DX Garden lists them under \"Unplaced\" and lets you\n"
+    "# no coordinates, so Ensō Radio lists them under \"Unplaced\" and lets you\n"
     "# pick a place for each; the result is added to the end of this file.\n"
     "#\n"
     "# Examples. Remove the # at the start of a line to use it.\n"
