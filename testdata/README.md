@@ -1,4 +1,4 @@
-# Test files for DX Garden builds
+# Test files for Ensō Radio builds
 
 Copy these to the Vita to exercise loading, grouping and imports. They only
 contain the M1 test streams (Radio Paradise and KEXP) and deliberately broken

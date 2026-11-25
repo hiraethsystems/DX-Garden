@@ -1,6 +1,8 @@
 # Project brief: a Radio Garden style radio explorer for PS Vita
 
-Name: **DX Garden**. Internal/folder name: `dxgarden` (data folder `ux0:data/dxgarden/`).
+Name: **Ensō Radio** (formerly DX Garden, renamed 2026-11-25). Internal/folder name: `dxgarden`, kept on purpose (data folder `ux0:data/dxgarden/`, title ID `DXGA00001`), so existing installs update in place. Use "Ensō Radio" for anything a user sees; don't rename the internal identifiers.
+
+The repository is `hiraethsystems/Enso-Radio-Vita` (was `DX-Garden`). The Android app is `hiraethsystems/Enso-Radio`, the Linux app `hiraethsystems/Enso-Radio-Linux`, the station list `hiraethsystems/Enso-Radio-Stations`.
 
 ## What this is
 
@@ -10,7 +12,7 @@ It should feel like Radio Garden to use, but with its own visual identity. Do no
 
 ## The Linux app has its own repo (my decision, 2026-11-24)
 
-This repo is **DX Garden for PS Vita** only. It is mostly finished and frozen; leave it as it is unless I ask. The Linux desktop app, which grew out of it, moved with its history to its own repository, `hiraethsystems/DX-Garden-Linux` (checked out at `~/Dev/DX-Garden-Linux`), on 2026-11-24; Linux work happens there, not here. Its 0.9.1 release (`v0.9.1`) stays in this repo's releases. There is no Windows version any more (removed 2026-11-22).
+This repo is **Ensō Radio for PS Vita** only. It is mostly finished and frozen; leave it as it is unless I ask. The Linux desktop app, which grew out of it, moved with its history to its own repository, `hiraethsystems/Enso-Radio-Linux` (was `DX-Garden-Linux`; checked out at `~/Dev/DX-Garden-Linux` until you rename the folder), on 2026-11-24; Linux work happens there, not here. Its 0.9.1 release (`v0.9.1`) stays in this repo's releases. There is no Windows version any more (removed 2026-11-22).
 
 `vita/VERSION` and `vita/BUILD` hold the Vita's version and build number; Vita releases are tagged `vita-vX.Y.Z` (0.9.0 was `v0.9.0`). `core/` stays portable C99: when it changes, the Linux unit tests must pass and the Vita build must still compile.
 

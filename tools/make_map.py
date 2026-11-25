@@ -4,7 +4,7 @@ border lines, assets/map/lines.bin, from Natural Earth data.
 
 Natural Earth (naturalearthdata.com) is public domain. This script downloads
 three 1:50m GeoJSON layers once into build/naturalearth/ (git-ignored) and
-draws land, lakes, coastlines and country borders in DX Garden's own
+draws land, lakes, coastlines and country borders in Ensō Radio's own
 colours, as an equirectangular image (longitude -180..180 left to right,
 latitude 90..-90 top to bottom).
 

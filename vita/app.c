@@ -596,7 +596,7 @@ static void menu_label(menu_action a, char *out, size_t n)
         snprintf(out, n, "Reload station files");
         break;
     case MENU_QUIT:
-        snprintf(out, n, "Quit DX Garden");
+        snprintf(out, n, "Quit Ensō Radio");
         break;
     }
 }
@@ -1627,7 +1627,7 @@ static void draw_top_bar(const player_status *st, const sys_status *sys)
         else if (st->icy_name[0] && st->state != PLAYER_IDLE && st->state != PLAYER_ERROR)
             gfx_text_fit(MARGIN, 43, 520, COL_DIM, 15, 0, st->icy_name);
     } else {
-        gfx_text(MARGIN, 32, COL_TEXT, 22, 1, "DX Garden");
+        gfx_text(MARGIN, 32, COL_TEXT, 22, 1, "Ensō Radio");
     }
 
     snprintf(buf, sizeof(buf), "Buffer %u%%", st->fill_pct);
@@ -1965,7 +1965,7 @@ static void draw_details(const player_status *st, const sys_status *sys)
         gfx_text_fit(64, y, SCREEN_W - 128, COL_DIM, 17, 0, buf);
     }
     y += 26;
-    snprintf(buf, sizeof(buf), "DX Garden " DXG_VERSION " (build " DXG_BUILD ")   ARM %d MHz",
+    snprintf(buf, sizeof(buf), "Ensō Radio " DXG_VERSION " (build " DXG_BUILD ")   ARM %d MHz",
              sys->arm_mhz);
     gfx_text(64, y, COL_DIM, 15, 0, buf);
 
@@ -2145,7 +2145,7 @@ static void draw_about(int x0, int y0, int w, int h)
 {
     int x = x0 + 32, y = y0 + 96;
 
-    gfx_text(x, y, COL_TEXT, 34, 1, "DX Garden");
+    gfx_text(x, y, COL_TEXT, 34, 1, "Ensō Radio");
     y += 34;
     gfx_text(x, y, COL_DIM, 19, 0,
              "Version " DXG_VERSION " (build " DXG_BUILD ")   Commit " DXG_REVISION);
@@ -2220,7 +2220,7 @@ static void draw_settings(void)
             label = "Reset to defaults";
             value = "";
         } else {
-            label = "About DX Garden";
+            label = "About Ensō Radio";
             value = DXG_VERSION;
             vcol = COL_DIM;
         }

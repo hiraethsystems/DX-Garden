@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DX Garden's LiveArea images: placeholders to draw over, and installing
+"""Ensō Radio's LiveArea images: placeholders to draw over, and installing
 your finished art into sce_sys/ for the VPK.
 
 The Vita LiveArea needs these, as 8-bit palette PNGs (256 colours at most):

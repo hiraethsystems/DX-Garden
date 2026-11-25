@@ -21,7 +21,7 @@
 #define GRAIN 1024        /* samples per sceAudioOutOutput call */
 #define READ_CHUNK 4096   /* compressed bytes per decoder read */
 #define CA_BUNDLE "app0:cacert.pem"
-#define USER_AGENT "DXGarden/" DXG_VERSION " (PS Vita)"
+#define USER_AGENT "EnsoRadio/" DXG_VERSION " (PS Vita)"
 
 #define THREAD_PRIO_DEFAULT 0x10000100
 #define NET_STACK (512 * 1024) /* mbedTLS handshakes are stack hungry */
@@ -196,12 +196,12 @@ static void first_data(const unsigned char *buf, size_t n)
     case SK_HLS:
         P.mode = MODE_REFUSED;
         snprintf(P.fatal, sizeof(P.fatal),
-                 "This station uses HLS (segmented streaming), which DX Garden doesn't play");
+                 "This station uses HLS (segmented streaming), which Ensō Radio doesn't play");
         break;
     case SK_OTHER:
         P.mode = MODE_REFUSED;
         snprintf(P.fatal, sizeof(P.fatal),
-                 "This station streams %s; DX Garden only plays MP3", format);
+                 "This station streams %s; Ensō Radio only plays MP3", format);
         break;
     case SK_HTML:
         P.mode = MODE_REFUSED;
@@ -347,7 +347,7 @@ static outcome fetch_once(CURL *c, char *msg, size_t mn, char *next, size_t nn)
         if (r == 1) {
             out = OUT_PLAYLIST;
         } else {
-            snprintf(msg, mn, r < 0 ? "The playlist is an HLS stream, which DX Garden doesn't play"
+            snprintf(msg, mn, r < 0 ? "The playlist is an HLS stream, which Ensō Radio doesn't play"
                                     : "The playlist has no stream address in it");
             out = OUT_FATAL;
         }

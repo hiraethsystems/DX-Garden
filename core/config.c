@@ -200,7 +200,7 @@ char *config_serialize(const config *c)
     if (!out)
         return NULL;
     out[0] = '\0';
-    APPEND("# DX Garden settings. Edit with care; the app rewrites this file\n"
+    APPEND("# Ensō Radio settings. Edit with care; the app rewrites this file\n"
            "# when a setting is changed in the app, and comments you add are lost.\n");
 
     for (k = 0; k < N_KNOWN; k++) {

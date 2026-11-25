@@ -426,7 +426,7 @@ static void test_userlist(void)
     }
     CHECK(l.count == RECENT_MAX && strcmp(l.urls[0], "http://n59") == 0);
     s = userlist_serialize(&l, FAVOURITES_HEADER);
-    CHECK(s && strncmp(s, "# DX Garden favourites", 22) == 0);
+    CHECK(s && strncmp(s, "# Ensō Radio favourites", strlen("# Ensō Radio favourites")) == 0);
     {
         userlist back;
         userlist_init(&back);

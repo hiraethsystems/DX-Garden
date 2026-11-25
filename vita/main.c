@@ -1,4 +1,4 @@
-/* DX Garden: start-up, the main loop and shutdown. */
+/* Ensō Radio: start-up, the main loop and shutdown. */
 #include <stdio.h>
 #include <string.h>
 
@@ -146,7 +146,7 @@ int main(void)
         sceIoRename(PATH_LOG, PATH_LOG_PREV);
     }
     log_open(PATH_LOG);
-    LOG("DX Garden " DXG_VERSION " (build " DXG_BUILD ") starting");
+    LOG("Ensō Radio " DXG_VERSION " (build " DXG_BUILD ") starting");
     /* The main loop keeps core 0; the player threads use cores 1 and 2. */
     {
         int rc = sceKernelChangeThreadCpuAffinityMask(sceKernelGetThreadId(),
@@ -165,9 +165,9 @@ int main(void)
     case GFX_ERR_NO_SHADER_COMPILER:
         gfx_fallback_message(
             "Shader compiler missing",
-            "DX Garden needs libshacccg.suprx in ur0:data/ to draw its graphics, and "
+            "Ensō Radio needs libshacccg.suprx in ur0:data/ to draw its graphics, and "
             "it was not found. Extract it with the ShaRKBR33D homebrew, then start "
-            "DX Garden again.");
+            "Ensō Radio again.");
         log_close();
         sceKernelExitProcess(0);
         return 0;
