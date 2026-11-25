@@ -513,7 +513,7 @@ static void test_sources(void)
     load_report r;
     static const char latin1[] = "Caf\xE9 FM | http://cafe.example/ | France | Paris | 48.85 | 2.35\n";
 
-    strcpy(tmpdir, "/tmp/dxg_test_XXXXXX");
+    strcpy(tmpdir, "/tmp/enso_test_XXXXXX");
     if (!mkdtemp(tmpdir)) {
         CHECK(!"mkdtemp failed");
         return;
@@ -545,7 +545,7 @@ static void test_sources(void)
     CHECK(report_has(&r, "missing.txt: file not found"));
     station_source_destroy(src);
 
-    src = playlist_dir_source_new("/nonexistent/dxg", posix_list);
+    src = playlist_dir_source_new("/nonexistent/ensoradio", posix_list);
     CHECK(src && src->load(src, &l, &r) == 0);
     station_source_destroy(src);
 

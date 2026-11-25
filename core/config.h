@@ -1,6 +1,6 @@
 /* config.ini: [section] headers, key = value lines, '#' or ';' comments. */
-#ifndef DXG_CONFIG_H
-#define DXG_CONFIG_H
+#ifndef ENSO_CONFIG_H
+#define ENSO_CONFIG_H
 
 #include <stddef.h>
 

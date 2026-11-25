@@ -1,6 +1,6 @@
 /* String -> int hash map (open addressing). Keys are copied. */
-#ifndef DXG_STRMAP_H
-#define DXG_STRMAP_H
+#ifndef ENSO_STRMAP_H
+#define ENSO_STRMAP_H
 
 #include <stddef.h>
 

@@ -1,6 +1,6 @@
 /* A station and a growable list of them. Lists own their strings. */
-#ifndef DXG_STATION_H
-#define DXG_STATION_H
+#ifndef ENSO_STATION_H
+#define ENSO_STATION_H
 
 typedef enum {
     STATION_FROM_FILE,   /* stations.txt: has a place */

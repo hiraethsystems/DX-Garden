@@ -1,8 +1,8 @@
 # Project brief: a Radio Garden style radio explorer for PS Vita
 
-Name: **Ensō Radio** (formerly DX Garden, renamed 2026-11-25). Internal/folder name: `dxgarden`, kept on purpose (data folder `ux0:data/dxgarden/`, title ID `DXGA00001`), so existing installs update in place. Use "Ensō Radio" for anything a user sees; don't rename the internal identifiers.
+Name: **Ensō Radio** (name chosen 2026-11-25; Radio Garden holds "Radio Garden" trade marks, so keep clearly apart from it). Internal/folder name: `ensoradio` (data folder `ux0:data/ensoradio/`). Kept so existing installs update in place: the title ID `DXGA00001`, and `ux0:data/dxgarden/`, the data folder of 0.9.1 and earlier, which the app moves to the new one on first start (`move_old_data_dir` in `vita/main.c`). Mention earlier identifiers only where users need them. Use "Ensō Radio" for anything a user sees, and "Enso Radio" only where ō can't be shown.
 
-The repository is `hiraethsystems/Enso-Radio-Vita` (was `DX-Garden`). The Android app is `hiraethsystems/Enso-Radio`, the Linux app `hiraethsystems/Enso-Radio-Linux`, the station list `hiraethsystems/Enso-Radio-Stations`.
+The repository is `hiraethsystems/Enso-Radio-Vita`. The Android app is `hiraethsystems/Enso-Radio`, the Linux app `hiraethsystems/Enso-Radio-Linux`, the station list `hiraethsystems/Enso-Radio-Stations`.
 
 ## What this is
 
@@ -12,7 +12,7 @@ It should feel like Radio Garden to use, but with its own visual identity. Do no
 
 ## The Linux app has its own repo (my decision, 2026-11-24)
 
-This repo is **Ensō Radio for PS Vita** only. It is mostly finished and frozen; leave it as it is unless I ask. The Linux desktop app, which grew out of it, moved with its history to its own repository, `hiraethsystems/Enso-Radio-Linux` (was `DX-Garden-Linux`; checked out at `~/Dev/DX-Garden-Linux` until you rename the folder), on 2026-11-24; Linux work happens there, not here. Its 0.9.1 release (`v0.9.1`) stays in this repo's releases. There is no Windows version any more (removed 2026-11-22).
+This repo is **Ensō Radio for PS Vita** only. It is mostly finished and frozen; leave it as it is unless I ask. The Linux desktop app, which grew out of it, moved with its history to its own repository, `hiraethsystems/Enso-Radio-Linux` (was `Enso-Radio-Linux`; checked out at `~/Dev/Enso-Radio-Linux` until you rename the folder), on 2026-11-24; Linux work happens there, not here. Its 0.9.1 release (`v0.9.1`) stays in this repo's releases. There is no Windows version any more (removed 2026-11-22).
 
 `vita/VERSION` and `vita/BUILD` hold the Vita's version and build number; Vita releases are tagged `vita-vX.Y.Z` (0.9.0 was `v0.9.0`). `core/` stays portable C99: when it changes, the Linux unit tests must pass and the Vita build must still compile.
 
@@ -22,13 +22,13 @@ I will test every build on real hardware and report back. Work in small mileston
 
 On the Vita, stations come only from my own station file and imports:
 
-- `ux0:data/dxgarden/stations.txt` in a simple documented format: name, stream URL, country, city, latitude, longitude, plus optional genre and notes.
-- M3U/PLS files placed in `ux0:data/dxgarden/import/` (these lack coordinates; let me assign a place to them in the app).
+- `ux0:data/ensoradio/stations.txt` in a simple documented format: name, stream URL, country, city, latitude, longitude, plus optional genre and notes.
+- M3U/PLS files placed in `ux0:data/ensoradio/import/` (these lack coordinates; let me assign a place to them in the app).
 - Add station by URL with the on-screen keyboard (IME dialog).
 
 **One directory is allowed, as a desktop snapshot only: Radio Browser (radio-browser.info).** A desktop script (`tools/rb_to_stations.py`) downloads stations from it once and writes a normal `stations.txt`. The Vita app never contacts Radio Browser.
 
-**Bundled list (my decision, 2026-10-21):** one snapshot made with that script (`--bundle <version>`) ships in the VPK as `assets/stations/stations.txt`. On first run it becomes `ux0:data/dxgarden/stations.txt`; the app never overwrites an existing one. The README says the list is correct as of the release date and that changes are the user's responsibility. Country labels follow where a station actually is, whatever Radio Browser says (my decision): Ukraine's territory, including Crimea and the occupied east and south, is labelled Ukraine; Palestinian territory is labelled Gaza or Occupied West Bank; UK stations are labelled by nation (England, Scotland, Wales, Northern Ireland), and the Crown Dependencies by their own names (Isle of Man, Jersey, Guernsey). Bundle no other list, and do not use Radio Garden's own API or data in any form (including entries that point back at Radio Garden). Ask me before using any other directory, and before adding any live lookup from the Vita (including to Radio Browser).
+**Bundled list (my decision, 2026-10-21):** one snapshot made with that script (`--bundle <version>`) ships in the VPK as `assets/stations/stations.txt`. On first run it becomes `ux0:data/ensoradio/stations.txt`; the app never overwrites an existing one. The README says the list is correct as of the release date and that changes are the user's responsibility. Country labels follow where a station actually is, whatever Radio Browser says (my decision): Ukraine's territory, including Crimea and the occupied east and south, is labelled Ukraine; Palestinian territory is labelled Gaza or Occupied West Bank; UK stations are labelled by nation (England, Scotland, Wales, Northern Ireland), and the Crown Dependencies by their own names (Isle of Man, Jersey, Guernsey). Bundle no other list, and do not use Radio Garden's own API or data in any form (including entries that point back at Radio Garden). Ask me before using any other directory, and before adding any live lookup from the Vita (including to Radio Browser).
 
 Keep all station loading behind a `station_source` interface in `core/` so another source could be added later, but only if I explicitly decide to. If a feature would need a directory or a live lookup, stop and ask me.
 
@@ -38,7 +38,7 @@ Follow the same split as my previous Vita project:
 
 - `core/`: portable C99, no Vita headers. Station file and playlist parsing, ICY metadata parsing, stream buffering logic, geographic clustering of stations into "places", config handling. Must build and run unit tests on Linux.
 - `vita/`: everything SCE-specific (networking, audio output, input, rendering, power/standby handling).
-- A native Linux test target (`dxgarden_test`) that builds `core/` without VitaSDK.
+- A native Linux test target (`ensoradio_test`) that builds `core/` without VitaSDK.
 
 ## Libraries
 
@@ -91,9 +91,9 @@ Any world map or globe texture must be public domain or have a licence that allo
 
 ## Files on the Vita
 
-- `ux0:data/dxgarden/config.ini`: settings and button map.
-- `ux0:data/dxgarden/stations.txt`, `favourites.txt`, `recent.txt`.
-- `ux0:data/dxgarden/import/`: drop M3U/PLS files here.
+- `ux0:data/ensoradio/config.ini`: settings and button map.
+- `ux0:data/ensoradio/stations.txt`, `favourites.txt`, `recent.txt`.
+- `ux0:data/ensoradio/import/`: drop M3U/PLS files here.
 - Create missing files and folders on first run with sensible defaults, plus a commented example `stations.txt`. Never crash on a malformed file.
 
 ## Helper tools (desktop)

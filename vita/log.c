@@ -61,13 +61,13 @@ static int writer(SceSize args, void *argp)
 
 void log_open(const char *path)
 {
-    sceKernelCreateLwMutex(&log_lock, "dxg_log", 0, 0, NULL);
+    sceKernelCreateLwMutex(&log_lock, "enso_log", 0, 0, NULL);
     log_start_us = sceKernelGetProcessTimeWide();
     log_file = fopen(path, "w");
     if (!log_file)
         return;
-    wake_sema = sceKernelCreateSema("dxg_log_wake", 0, 0, 0x7FFFFFFF, NULL);
-    writer_thid = sceKernelCreateThread("dxg_log_writer", writer, 0x10000100, 0x4000, 0, 0, NULL);
+    wake_sema = sceKernelCreateSema("enso_log_wake", 0, 0, 0x7FFFFFFF, NULL);
+    writer_thid = sceKernelCreateThread("enso_log_writer", writer, 0x10000100, 0x4000, 0, 0, NULL);
     if (wake_sema < 0 || writer_thid < 0 || sceKernelStartThread(writer_thid, 0, NULL) < 0)
         writer_thid = -1; /* fall back to writing directly */
 }

@@ -150,7 +150,7 @@ int font_init(void)
     LOG("font: Noto Sans loaded in %u ms; other scripts load in the background",
         (unsigned)((sceKernelGetProcessTimeWide() - t0) / 1000));
 
-    loader = sceKernelCreateThread("dxg_font_load", load_thread, 0x10000100, 0x10000, 0, 0, NULL);
+    loader = sceKernelCreateThread("enso_font_load", load_thread, 0x10000100, 0x10000, 0, 0, NULL);
     if (loader < 0 || sceKernelStartThread(loader, 0, NULL) < 0) {
         LOG("font: loader thread failed, reading on the main thread");
         loader = -1;

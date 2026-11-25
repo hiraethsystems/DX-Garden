@@ -7,8 +7,8 @@
  * and Notes are optional. '#' starts a comment line. Bad lines are skipped
  * and reported, never fatal.
  */
-#ifndef DXG_STATIONS_FILE_H
-#define DXG_STATIONS_FILE_H
+#ifndef ENSO_STATIONS_FILE_H
+#define ENSO_STATIONS_FILE_H
 
 #include <stddef.h>
 

@@ -1,6 +1,6 @@
 /* Byte ring buffer. Not thread-safe: callers on the Vita wrap it in a lock. */
-#ifndef DXG_RING_BUFFER_H
-#define DXG_RING_BUFFER_H
+#ifndef ENSO_RING_BUFFER_H
+#define ENSO_RING_BUFFER_H
 
 #include <stddef.h>
 #include <stdint.h>

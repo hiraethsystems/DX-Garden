@@ -29,7 +29,7 @@ const char STATIONS_EXAMPLE[] =
     "# Stream URLs must start with http:// or https:// and point at the audio\n"
     "# stream itself, not at a web page.\n"
     "#\n"
-    "# M3U and PLS playlists go in ux0:data/dxgarden/import/ instead. They have\n"
+    "# M3U and PLS playlists go in ux0:data/ensoradio/import/ instead. They have\n"
     "# no coordinates, so Ensō Radio lists them under \"Unplaced\" and lets you\n"
     "# pick a place for each; the result is added to the end of this file.\n"
     "#\n"

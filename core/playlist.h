@@ -1,7 +1,7 @@
 /* M3U/M3U8 and PLS playlist parsing for files in import/. Imported stations
  * have a name and URL only; the user assigns a place in the app. */
-#ifndef DXG_PLAYLIST_H
-#define DXG_PLAYLIST_H
+#ifndef ENSO_PLAYLIST_H
+#define ENSO_PLAYLIST_H
 
 #include <stddef.h>
 

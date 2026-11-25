@@ -4,13 +4,13 @@
  * rest of the app. Today there are exactly two, both reading the user's own
  * files:
  *
- *   - stations_file_source: ux0:data/dxgarden/stations.txt
- *   - playlist_dir_source:  M3U/PLS files in ux0:data/dxgarden/import/
+ *   - stations_file_source: ux0:data/ensoradio/stations.txt
+ *   - playlist_dir_source:  M3U/PLS files in ux0:data/ensoradio/import/
  *
  * No source may fetch or bundle a station directory.
  */
-#ifndef DXG_STATION_SOURCE_H
-#define DXG_STATION_SOURCE_H
+#ifndef ENSO_STATION_SOURCE_H
+#define ENSO_STATION_SOURCE_H
 
 #include "load_report.h"
 #include "station.h"

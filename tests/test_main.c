@@ -1,4 +1,4 @@
-/* dxgarden_test: unit tests for core/, built natively on Linux. */
+/* ensoradio_test: unit tests for core/, built natively on Linux. */
 #include <stdio.h>
 #include <string.h>
 

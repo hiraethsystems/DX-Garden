@@ -1,8 +1,8 @@
 /* Drawing helpers on vitaGL: Noto Sans text from our own glyph atlas,
  * rectangles, circles and button icons. All 2D drawing goes through one
  * texture, so a typical frame is a single draw call. */
-#ifndef DXG_GFX_H
-#define DXG_GFX_H
+#ifndef ENSO_GFX_H
+#define ENSO_GFX_H
 
 #define SCREEN_W 960
 #define SCREEN_H 544

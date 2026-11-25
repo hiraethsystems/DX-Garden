@@ -1,6 +1,6 @@
 /* Problems found while loading user files, for the "Load report" screen. */
-#ifndef DXG_LOAD_REPORT_H
-#define DXG_LOAD_REPORT_H
+#ifndef ENSO_LOAD_REPORT_H
+#define ENSO_LOAD_REPORT_H
 
 typedef struct {
     char *text;

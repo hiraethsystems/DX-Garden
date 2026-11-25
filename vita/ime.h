@@ -1,7 +1,7 @@
 /* The system on-screen keyboard (IME dialog). The dialog draws itself
  * during gfx_end() while the app keeps rendering frames. */
-#ifndef DXG_IME_H
-#define DXG_IME_H
+#ifndef ENSO_IME_H
+#define ENSO_IME_H
 
 #include <stddef.h>
 
